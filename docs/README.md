@@ -11,6 +11,8 @@
 | [MODELE-DONNEES.md](MODELE-DONNEES.md) | Comprendre les tables, les relations et les choix de modélisation |
 | [WIREFRAMES.md](WIREFRAMES.md) | Voir les écrans clés et les principes UX |
 | [SUIVI-LIVRAISON.md](SUIVI-LIVRAISON.md) | Comprendre le suivi de livraison, la fraîcheur des positions et le contrat d'API |
+| [AUDIT-PRODUIT-UX-CONVERSION.md](AUDIT-PRODUIT-UX-CONVERSION.md) | Lire l'audit produit, UX, conversion, SEO et concurrence |
+| [STRATEGIE-CROISSANCE.md](STRATEGIE-CROISSANCE.md) | Lire la stratégie SEO, le plan d'acquisition et la roadmap optimisée |
 | [../prisma/schema.prisma](../prisma/schema.prisma) | Voir le schéma exécutable |
 
 ## Résumé du projet
@@ -43,16 +45,19 @@ socle mais ne pilotent pas la conception du MVP.
 | Livrable | État |
 | --- | --- |
 | Site marketing | Livré — https://aydiarra-star.github.io/Jotoliko/ |
+| Pages sectorielles (7 métiers) | Livrées — `/secteurs/*` |
+| Calculateur ROI | Livré — `/` section « Calculateur » |
 | Cahier des charges MVP | Livré |
 | Architecture | Livrée |
 | Modèle de données (Prisma) | Livré |
 | Wireframes et principes UX | Livrés |
 | Environnement local (Docker) | Livré |
+| Audit produit, UX et conversion | Livré |
+| Stratégie SEO et croissance | Livrée |
 | API NestJS | À venir |
 | Console web | À venir |
 | Application livreur Flutter | À venir |
 | Maquettes haute fidélité | À venir |
-| Tests | À venir |
 | Déploiement production | À venir |
 
 ## Démarrage local
