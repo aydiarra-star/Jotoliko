@@ -9,6 +9,7 @@
 | [CAHIER-DES-CHARGES-MVP.md](CAHIER-DES-CHARGES-MVP.md) | Comprendre le périmètre, la cible et les décisions produit |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Comprendre la stack, le multi-tenant, l'API et le hors ligne |
 | [MODELE-DONNEES.md](MODELE-DONNEES.md) | Comprendre les tables, les relations et les choix de modélisation |
+| [WIREFRAMES.md](WIREFRAMES.md) | Voir les écrans clés et les principes UX |
 | [../prisma/schema.prisma](../prisma/schema.prisma) | Voir le schéma exécutable |
 
 ## Résumé du projet
@@ -44,11 +45,12 @@ socle mais ne pilotent pas la conception du MVP.
 | Cahier des charges MVP | Livré |
 | Architecture | Livrée |
 | Modèle de données (Prisma) | Livré |
+| Wireframes et principes UX | Livrés |
 | Environnement local (Docker) | Livré |
 | API NestJS | À venir |
 | Console web | À venir |
 | Application livreur Flutter | À venir |
-| Wireframes et maquettes | À venir |
+| Maquettes haute fidélité | À venir |
 | Tests | À venir |
 | Déploiement production | À venir |
 
