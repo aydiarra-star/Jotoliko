@@ -21,6 +21,9 @@ export type Point = {
   recordedAt: number;
 };
 
+/** Coordonnées seules : suffisent à tout calcul géométrique. */
+export type Coordonnees = Pick<Point, "lat" | "lng">;
+
 export type PositionFreshness =
   | "FRAICHE"
   | "ANCIENNE"
@@ -59,8 +62,14 @@ export function libelleFraicheur(
   const etat = evaluerFraicheur(position, maintenant);
   switch (etat) {
     case "AUCUNE_DONNEE":
+      return "Aucune position reçue";
     case "INDISPONIBLE":
-      return `Position indisponible · dernière position il y a ${formaterAge(maintenant - position.recordedAt)}`;
+      // Deux causes possibles : position trop ancienne, ou horodatage
+      // incohérent. Dans les deux cas, l'âge n'est pas une information
+      // présentable telle quelle.
+      return maintenant - position.recordedAt < 0
+        ? "Position indisponible · horodatage incohérent"
+        : `Position indisponible · dernière position il y a ${formaterAge(maintenant - position.recordedAt)}`;
     case "ANCIENNE":
       return `Dernière position connue : il y a ${formaterAge(maintenant - position.recordedAt)}`;
     case "FRAICHE":
@@ -83,7 +92,7 @@ export function formaterAge(ms: number): string {
 
 const RAYON_TERRE_KM = 6371;
 
-export function distanceKm(a: Point, b: Point): number {
+export function distanceKm(a: Coordonnees, b: Coordonnees): number {
   const dLat = toRad(b.lat - a.lat);
   const dLng = toRad(b.lng - a.lng);
   const lat1 = toRad(a.lat);

@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { Navbar } from "@/components/ui/navbar";
-import { Footer } from "@/components/ui/footer";
 import { site } from "@/lib/content";
 
 const inter = Inter({
@@ -58,9 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           Aller au contenu
         </a>
-        <Navbar />
-        <main id="contenu">{children}</main>
-        <Footer />
+        {children}
       </body>
     </html>
   );
