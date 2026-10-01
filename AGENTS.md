@@ -100,3 +100,40 @@ au vert.
   exprimées en **minutes écoulées** et non en horodatage absolu : cela évite tout
   décalage d'hydratation dans l'export statique et garde la démo cohérente.
 - Lancer les tests : `npm test`.
+
+## Règle de preuve de livraison (non négociable)
+
+Une livraison ne peut pas être clôturée sans preuve enregistrée. La règle vit
+dans le domaine (`transitionTerrain` dans `lib/domain/operations.ts`), pas dans
+l'interface : un écran peut oublier de la vérifier, un appelant mobile ou un
+futur backend la contournerait. Ne jamais la déplacer vers un composant.
+
+Ordre imposé : `ARRIVE` → enregistrer la preuve → `LIVREE`. Couvert par
+`lib/domain/domain.test.ts`.
+
+## Application (`app/app/`)
+
+- L'état vit dans le navigateur (`lib/magasin.tsx`) et survit au rechargement via
+  `localStorage`. Le serveur rend un état vide, l'hydratation attend `pret`.
+- Aucune règle métier dans le magasin : toutes les mutations passent par
+  `lib/domain/operations.ts`.
+- Les pages de détail utilisent des **paramètres de requête**
+  (`/app/livraisons/detail/?id=liv-1` via `lienDetail`), jamais des routes
+  dynamiques `[id]` : l'export statique ne peut pas pré-rendre ces dernières.
+- Les horodatages de démonstration et l'ancre de session sont calculés **vers le
+  passé** depuis l'instant courant. Ancrer à midi produisait un « aujourd'hui »
+  dans le futur.
+- Chaîne vérifiée de bout en bout : commande → affectation → départ → arrivée →
+  preuve → livraison → encaissement → caisse → rapport.
+
+## Déploiement
+
+`.github/workflows/deploy-pages.yml` publie `./out` sur `gh-pages` au push sur
+`main` (ou via `workflow_dispatch`). Le build doit recevoir
+`NEXT_PUBLIC_BASE_PATH=/Jotoliko`, sinon les assets 404.
+
+Limite connue de l'environnement d'agent : le `GITHUB_TOKEN` disponible est un
+jeton d'installation d'application GitHub en lecture seule (`contents: read`).
+`git push` échoue en 403 (« Resource not accessible by integration »). Le travail
+est donc committé localement et doit être poussé par un humain, ou par un jeton
+disposant de `contents: write`.
