@@ -199,6 +199,26 @@ export default function CommandeWhatsAppPage() {
                 </p>
               ) : null}
 
+              {analyseCourante.informationsManquantes.length > 0 ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-red-800">
+                    <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+                    Informations manquantes
+                  </p>
+                  <ul className="mt-1.5 space-y-0.5">
+                    {analyseCourante.informationsManquantes.map((m) => (
+                      <li key={m.code} className="text-xs text-red-800">
+                        • {m.libelle}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1.5 text-xs text-red-800/80">
+                    Rien n&apos;est deviné : complétez ces informations ci-dessous avant de créer
+                    la commande.
+                  </p>
+                </div>
+              ) : null}
+
               {analyseCourante.nonCompris.length > 0 ? (
                 <div className="rounded-xl bg-amber-50 px-3 py-2.5">
                   <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-900">

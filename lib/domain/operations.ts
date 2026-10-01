@@ -10,6 +10,8 @@
 //   - chaque opération produit un événement horodaté, ce qui constitue l'audit.
 
 import { ingererPosition, type PositionEntrante } from "./gps";
+import { calculerCaisseLivreur, validerJustificationEcart } from "./paiements";
+import { bornesJournee } from "./rapports";
 import { normaliserNumeroSenegal } from "./whatsapp";
 import {
   changerStatutCommande,
@@ -18,9 +20,11 @@ import {
 } from "./statuts";
 import type {
   Adresse,
+  AuditLog,
   Client,
   Commande,
   EvenementLivraison,
+  JustificationEcart,
   Livraison,
   LigneCommande,
   ModePaiement,
@@ -846,6 +850,104 @@ export function enregistrerRemise(
 
   const monde: Monde = { ...etat.monde, remises: [...etat.monde.remises, remise] };
   return ok({ ...etat, monde });
+}
+
+/**
+ * Explique un écart de caisse.
+ *
+ * L'écart n'est jamais corrigé ni effacé : on y attache une phrase qui dit
+ * pourquoi il existe. Un écart sans explication reste visible dans la clôture,
+ * ce qui est le but : le responsable doit pouvoir le voir, pas le perdre.
+ */
+export function justifierEcart(
+  etat: EtatApplication,
+  params: { livreurId: string; commentaire: string },
+  ctx: Contexte,
+): Resultat<EtatApplication> {
+  const livreur = etat.monde.livreurs.find((l) => l.id === params.livreurId);
+  if (!livreur) return echec("Livreur introuvable.");
+
+  const controle = validerJustificationEcart(params.commentaire);
+  if (!controle.ok) return echec(controle.raison);
+
+  const { debut } = bornesJournee(ctx.maintenant);
+  const ligne = calculerCaisseLivreur({
+    livreurId: params.livreurId,
+    livraisons: etat.monde.livraisons.filter((l) => dansJourneeLocal(l.createdAt, debut)),
+    paiements: etat.monde.paiements,
+    remises: etat.monde.remises,
+    justifications: etat.monde.justifications.filter((j) => j.journee === debut),
+  });
+
+  if (ligne.ecartJuste) {
+    return echec("La caisse de ce livreur est juste : il n'y a aucun écart à expliquer.");
+  }
+
+  // Une seule explication par livreur et par journée : la dernière écrite fait
+  // foi, ce qui évite d'accumuler des versions contradictoires du même écart.
+  const autres = etat.monde.justifications.filter(
+    (j) => !(j.livreurId === params.livreurId && j.journee === debut),
+  );
+  const justification: JustificationEcart = {
+    id: ctx.nouvelId(),
+    companyId: etat.monde.entreprise.id,
+    livreurId: params.livreurId,
+    journee: debut,
+    ecart: ligne.ecart,
+    commentaire: params.commentaire.trim(),
+    createdAt: ctx.maintenant,
+    provenance: etat.monde.entreprise.provenance,
+  };
+
+  const audit: AuditLog = {
+    id: ctx.nouvelId(),
+    companyId: etat.monde.entreprise.id,
+    action: "ECART_JUSTIFIE",
+    cible: { type: "LIVREUR", id: params.livreurId },
+    details: `${ligne.ecart.toLocaleString("fr-FR")} FCFA — ${justification.commentaire}`,
+    recordedAt: ctx.maintenant,
+    provenance: etat.monde.entreprise.provenance,
+  };
+
+  const monde: Monde = {
+    ...etat.monde,
+    justifications: [...autres, justification],
+    audits: [...etat.monde.audits, audit],
+  };
+  return ok({ ...etat, monde });
+}
+
+function dansJourneeLocal(horodatage: number, debut: number): boolean {
+  const fin = new Date(debut);
+  fin.setDate(fin.getDate() + 1);
+  return horodatage >= debut && horodatage < fin.getTime();
+}
+
+// ---------------------------------------------------------------------------
+// Reprise d'un état enregistré
+// ---------------------------------------------------------------------------
+
+/**
+ * Complète un état restauré avec les collections qui n'existaient pas encore
+ * quand il a été enregistré.
+ *
+ * Un état persistant est lu par une version plus récente du code : les champs
+ * ajoutés depuis sont absents. Les laisser `undefined` ferait planter la
+ * première lecture, et les remplir avec des données de démonstration ferait
+ * apparaître de faux mouvements d'argent. On complète donc par du vide : une
+ * collection absente est une collection où rien ne s'est encore passé.
+ */
+export function reparerEtat(etat: EtatApplication): EtatApplication {
+  const monde = etat.monde;
+  return {
+    ...etat,
+    file: etat.file ?? [],
+    monde: {
+      ...monde,
+      justifications: monde.justifications ?? [],
+      audits: monde.audits ?? [],
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------

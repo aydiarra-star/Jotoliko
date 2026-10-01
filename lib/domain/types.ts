@@ -193,6 +193,7 @@ export type TypeEvenement =
   | "PREUVE_AJOUTEE"
   | "PAIEMENT_ENREGISTRE"
   | "REMISE_ENREGISTREE"
+  | "ECART_JUSTIFIE"
   | "POSITION_ENREGISTREE";
 
 export type EvenementLivraison = {
@@ -323,6 +324,47 @@ export type Remise = {
   provenance: Provenance;
 };
 
+/**
+ * Explication écrite d'un écart de caisse.
+ *
+ * Un écart n'est jamais effacé ni neutralisé : il est soit à zéro, soit
+ * expliqué. Cette trace est ce qui distingue un manquant documenté d'un
+ * manquant oublié, et c'est précisément ce que le responsable vient chercher.
+ */
+export type JustificationEcart = {
+  id: string;
+  companyId: string;
+  livreurId: string;
+  /** Début de la journée concernée, pour rattacher l'explication au bon jour. */
+  journee: number;
+  /** Écart constaté au moment où l'explication a été écrite. */
+  ecart: number;
+  commentaire: string;
+  createdAt: number;
+  provenance: Provenance;
+};
+
+// ---------------------------------------------------------------------------
+// Journal d'audit
+// ---------------------------------------------------------------------------
+
+/**
+ * Trace d'une mutation sensible. Chaque action qui touche à l'argent, à
+ * l'affectation ou à un écart laisse une ligne ici : c'est ce qui permet de
+ * répondre à « qui a fait quoi, et quand » sans reconstituer l'histoire.
+ */
+export type AuditLog = {
+  id: string;
+  companyId: string;
+  /** Utilisateur à l'origine de l'action, quand il est connu. */
+  acteurId?: string;
+  action: string;
+  cible: { type: string; id: string };
+  details?: string;
+  recordedAt: number;
+  provenance: Provenance;
+};
+
 // ---------------------------------------------------------------------------
 // File de synchronisation (hors ligne)
 // ---------------------------------------------------------------------------
@@ -372,5 +414,7 @@ export type Monde = {
   preuves: Preuve[];
   paiements: Paiement[];
   remises: Remise[];
+  justifications: JustificationEcart[];
+  audits: AuditLog[];
   evenements: EvenementLivraison[];
 };

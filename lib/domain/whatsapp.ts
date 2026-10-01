@@ -50,6 +50,17 @@ export type AnalyseMessage = {
   lignesIgnorees: string[];
   /** Ce que le moteur n'a pas su interpréter, à relire par le bureau. */
   nonCompris: string[];
+  /**
+   * Informations indispensables absentes du message. Le bureau doit les
+   * compléter avant de créer la commande : rien n'est deviné à sa place.
+   */
+  informationsManquantes: InformationManquante[];
+};
+
+/** Ce qui manque pour qu'une commande soit exploitable. */
+export type InformationManquante = {
+  code: "PRODUIT" | "MONTANT";
+  libelle: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -178,12 +189,27 @@ const MOTS_POLITESSE = new Set([
   "beaucoup", "tres", "trop", "aussi", "encore", "tout", "tous",
 ]);
 
-// Une salutation en tête de ligne range la ligne entière du côté de la
-// politesse, même si elle est suivie d'un nom ou de mots que l'analyse ne
-// connaît pas.
+// Une salutation en tête de ligne ne suffit pas à ranger la ligne du côté de
+// la politesse : « Bonjour, livrez à Aïssatou à Parcelles » est une demande,
+// pas une salutation. On ne met de côté que les lignes sans contenu.
 const MOTS_OUVERTURE = new Set([
   "bonjour", "bonsoir", "bsr", "bjr", "salut", "salam", "salaam", "salamalekoum",
   "hello", "hi", "coucou", "nangadef", "jerejef", "asalamalekoum",
+]);
+
+// Verbes et mots qui trahissent une instruction de livraison, même glissés
+// derrière une salutation. Une ligne qui en contient n'est jamais de la
+// politesse : elle part à l'analyse, et finit en « non compris » si elle n'est
+// pas exploitable. La perdre serait pire que la signaler.
+const MOTS_INSTRUCTION = new Set([
+  "livrez", "livrer", "livre", "livraison", "livraisons", "envoyez", "envoyer",
+  "envoi", "amenez", "amener", "apportez", "apporter", "deposez", "deposer",
+  "passez", "passer", "prenez", "prendre", "recuperez", "recuperer", "ramenez",
+  "ramener", "commandez", "commander", "commande", "commandes", "besoin",
+  "veux", "veut", "voudrais", "voudrait", "souhaite", "souhaiterais", "donnez",
+  "donner", "facture", "factures", "adresse", "adresses", "client", "clients",
+  "colis", "paquet", "demain", "aujourd", "matin", "soir", "urgence",
+  "rapidement", "vite",
 ]);
 
 // Une phrase se termine par un point, un point d'exclamation ou d'interrogation.
@@ -235,9 +261,13 @@ function estPolitesse(ligne: string): boolean {
     .filter(Boolean);
   if (mots.length === 0) return true;
 
-  // Un message s'ouvre presque toujours par une salutation, souvent suivie du
-  // nom du destinataire : « Bonjour Jotoliko ». Sans cette règle, la salutation
-  // deviendrait une ligne de commande — un article plausible et faux.
+  // Une instruction de livraison n'est jamais de la politesse, même si elle
+  // commence par une salutation. On la garde pour l'analyse : mieux vaut la
+  // signaler comme non comprise que la faire disparaître.
+  if (mots.some((m) => MOTS_INSTRUCTION.has(m))) return false;
+
+  // Une salutation seule, ou suivie du nom du destinataire : « Bonjour Jotoliko ».
+  // Sans cette règle, la salutation deviendrait un article plausible et faux.
   if (MOTS_OUVERTURE.has(mots[0])) return true;
 
   // Sinon, une ligne de politesse n'est faite que de politesse, et reste courte.
@@ -320,7 +350,30 @@ export function analyserMessage(message: MessageWhatsApp, clients: Client[] = []
     commande: { lignes, montantAnnonce, remiseAnnoncee },
     lignesIgnorees,
     nonCompris,
+    informationsManquantes: repererInformationsManquantes(lignes, montantAnnonce),
   };
+}
+
+/**
+ * Ce qu'un message ne dit pas ne doit jamais être supposé.
+ *
+ * « Livrez à Aïssatou à Parcelles demain » est une demande compréhensible mais
+ * inexploitable : sans produit ni montant, il n'y a pas de commande. On liste
+ * donc ce qui manque, et le bureau complète. Deviner un produit ou un prix
+ * produirait une commande fausse avec l'apparence d'une commande certaine.
+ */
+export function repererInformationsManquantes(
+  lignes: LigneExtraite[],
+  montantAnnonce: number | undefined,
+): InformationManquante[] {
+  const manquantes: InformationManquante[] = [];
+  if (lignes.length === 0) {
+    manquantes.push({ code: "PRODUIT", libelle: "Produit" });
+  }
+  if (montantAnnonce === undefined) {
+    manquantes.push({ code: "MONTANT", libelle: "Montant" });
+  }
+  return manquantes;
 }
 
 function extraireMontantTotal(texte: string): number | undefined {

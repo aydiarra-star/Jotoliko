@@ -11,6 +11,7 @@
 
 import { formaterFcfa } from "../tracking";
 import type {
+  JustificationEcart,
   Livraison,
   ModePaiement,
   Paiement,
@@ -128,8 +129,16 @@ export type LigneCaisseLivreur = {
   montantARemettre: number;
   /** Ce qu'il a effectivement remis. */
   montantRemis: number;
+  /** Ce qu'il lui reste à remettre : à remettre moins déjà remis. */
+  resteARemettre: number;
   /** montantRemis - montantARemettre. Positif : excédent. Négatif : manquant. */
   ecart: number;
+  /** Vrai quand l'écart est nul : la caisse est juste, il n'y a rien à expliquer. */
+  ecartJuste: boolean;
+  /** Vrai quand l'écart est couvert par une explication écrite. */
+  ecartExplique: boolean;
+  /** Explication enregistrée pour la journée, s'il y en a une. */
+  justification?: JustificationEcart;
 };
 
 export function calculerCaisseLivreur(params: {
@@ -137,6 +146,7 @@ export function calculerCaisseLivreur(params: {
   livraisons: Livraison[];
   paiements: Paiement[];
   remises: Remise[];
+  justifications?: JustificationEcart[];
 }): LigneCaisseLivreur {
   const { livreurId } = params;
   const livraisons = params.livraisons.filter((l) => l.livreurId === livreurId);
@@ -157,6 +167,9 @@ export function calculerCaisseLivreur(params: {
       return total + Math.max(0, l.montantAttendu - encaisse);
     }, 0);
 
+  const ecart = montantRemis - montantEncaisse;
+  const justification = params.justifications?.find((j) => j.livreurId === livreurId);
+
   return {
     livreurId,
     livraisonsConfiees: livraisons.length,
@@ -167,7 +180,11 @@ export function calculerCaisseLivreur(params: {
     montantRestantAEncaisser,
     montantARemettre: montantEncaisse,
     montantRemis,
-    ecart: montantRemis - montantEncaisse,
+    resteARemettre: Math.max(0, montantEncaisse - montantRemis),
+    ecart,
+    ecartJuste: ecart === 0,
+    ecartExplique: ecart === 0 || Boolean(justification),
+    justification,
   };
 }
 
@@ -176,6 +193,25 @@ export function libelleEcart(ecart: number): string {
   if (ecart === 0) return "Caisse juste";
   if (ecart > 0) return `Excédent de ${formaterFcfa(ecart)}`;
   return `Manquant de ${formaterFcfa(Math.abs(ecart))}`;
+}
+
+/**
+ * Un écart se justifie par une phrase, pas par un mot.
+ *
+ * Sans ce minimum, « ok » ou « vu » tiendrait lieu d'explication et l'écart
+ * cesserait d'être visible — exactement ce que la règle interdit.
+ */
+export function validerJustificationEcart(
+  commentaire: string,
+): { ok: true } | { ok: false; raison: string } {
+  const propre = commentaire.trim();
+  if (propre.length === 0) {
+    return { ok: false, raison: "Expliquez l'écart en quelques mots." };
+  }
+  if (propre.length < 5) {
+    return { ok: false, raison: "L'explication est trop courte pour être utile." };
+  }
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------

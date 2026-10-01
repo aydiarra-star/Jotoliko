@@ -40,9 +40,11 @@ import {
   enregistrerPaiement,
   enregistrerPosition,
   enregistrerRemise,
+  justifierEcart,
   faireEvoluerCommande,
   modifierClient,
   modifierCommande,
+  reparerEtat,
   rejouerOperation,
   supprimerClient,
   synchroniser,
@@ -160,6 +162,7 @@ type Magasin = {
   ajouterPreuve: (p: Parameters<typeof ajouterPreuve>[1]) => Resultat<EtatApplication>;
   encaisser: (p: { livraisonId: string; montant: number; mode: ModePaiement; referenceExterne?: string }) => Resultat<EtatApplication>;
   remiser: (p: { livreurId: string; montant: number; note?: string }) => Resultat<EtatApplication>;
+  justifierEcart: (p: { livreurId: string; commentaire: string }) => Resultat<EtatApplication>;
   positionner: (p: {
     clientId: string;
     livraisonId: string;
@@ -189,7 +192,9 @@ export function FournisseurMagasin({ children }: { children: ReactNode }) {
         // Les données restaurées portent leurs propres horodatages : on ne les
         // recale pas sur aujourd'hui, sinon la démonstration mentirait sur l'âge
         // réel des positions enregistrées.
-        if (charge?.monde?.entreprise) dispatch({ type: "CHARGER", etat: charge });
+        if (charge?.monde?.entreprise) {
+          dispatch({ type: "CHARGER", etat: reparerEtat(charge) });
+        }
       }
     } catch {
       // Un stockage illisible ne doit pas empêcher l'application de démarrer.
@@ -253,6 +258,7 @@ export function FournisseurMagasin({ children }: { children: ReactNode }) {
       ajouterPreuve: (p) => appliquer((e, c) => ajouterPreuve(e, p, c)),
       encaisser: (p) => appliquer((e, c) => enregistrerPaiement(e, p, c)),
       remiser: (p) => appliquer((e, c) => enregistrerRemise(e, p, c)),
+      justifierEcart: (p) => appliquer((e, c) => justifierEcart(e, p, c)),
       positionner: (p) => {
         const ctx: Contexte = {
           maintenant: Date.now(),

@@ -11,6 +11,9 @@ import {
 import { useMagasin } from "@/lib/magasin";
 import { formaterFcfa, libelleEcart } from "@/lib/domain/paiements";
 import { construireRapportCaisse } from "@/lib/domain/rapports";
+import type { LigneCaisseLivreur } from "@/lib/domain/paiements";
+import type { Resultat } from "@/lib/domain/types";
+import { useState } from "react";
 import { LIBELLES_MODE_PAIEMENT } from "@/lib/domain/paiements";
 import { lienDetail } from "@/lib/use-parametre";
 
@@ -24,6 +27,7 @@ export default function EncaissementsPage() {
     paiements: etat.monde.paiements,
     remises: etat.monde.remises,
     livreurIds: etat.monde.livreurs.map((l) => l.id),
+    justifications: etat.monde.justifications,
   });
 
   const nomLivreur = (id: string) =>
@@ -76,57 +80,82 @@ export default function EncaissementsPage() {
       {/* Caisse par livreur */}
       <Carte titre="Caisse par livreur">
         <div className="-mx-5 overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
+          <table className="w-full min-w-[860px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-ink-500">
                 <th className="px-5 py-2.5 font-medium">Livreur</th>
+                <th className="px-5 py-2.5 text-right font-medium">Attendu</th>
                 <th className="px-5 py-2.5 text-right font-medium">Encaissé</th>
                 <th className="px-5 py-2.5 text-right font-medium">À remettre</th>
                 <th className="px-5 py-2.5 text-right font-medium">Remis</th>
+                <th className="px-5 py-2.5 text-right font-medium">Reste</th>
                 <th className="px-5 py-2.5 text-right font-medium">Écart</th>
                 <th className="px-5 py-2.5 font-medium"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rapport.lignes.map((l) => {
-                const aRemettre = Math.max(0, l.montantARemettre - l.montantRemis);
-                return (
-                  <tr key={l.livreurId} className="transition-colors hover:bg-surface">
-                    <td className="px-5 py-3">{nomLivreur(l.livreurId)}</td>
-                    <td className="px-5 py-3 text-right tabular-nums">
-                      {formaterFcfa(l.montantEncaisse)}
-                    </td>
-                    <td className="px-5 py-3 text-right tabular-nums text-amber-700">
-                      {formaterFcfa(aRemettre)}
-                    </td>
-                    <td className="px-5 py-3 text-right tabular-nums">
-                      {formaterFcfa(l.montantRemis)}
-                    </td>
-                    <td className="px-5 py-3 text-right">
+              {rapport.lignes.map((l) => (
+                <tr key={l.livreurId} className="transition-colors hover:bg-surface">
+                  <td className="px-5 py-3">
+                    {nomLivreur(l.livreurId)}
+                    {l.ecartJuste ? null : (
                       <span
                         className={
-                          l.ecart === 0
-                            ? "text-xs font-medium text-success"
-                            : "text-xs font-medium text-red-600"
+                          l.ecartExplique
+                            ? "ml-2 text-[10px] font-semibold uppercase text-amber-700"
+                            : "ml-2 text-[10px] font-semibold uppercase text-red-600"
                         }
                       >
-                        {l.ecart === 0 ? "Juste" : formaterFcfa(l.ecart)}
+                        {l.ecartExplique ? "Expliqué" : "À expliquer"}
                       </span>
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      <Link
-                        href={lienDetail("/app/livreurs/detail", l.livreurId)}
-                        className="text-xs font-semibold text-brand"
-                      >
-                        Détail
-                      </Link>
-                    </td>
-                  </tr>
-                );
-              })}
+                    )}
+                  </td>
+                  <td className="px-5 py-3 text-right tabular-nums">
+                    {formaterFcfa(l.montantAttendu)}
+                  </td>
+                  <td className="px-5 py-3 text-right tabular-nums">
+                    {formaterFcfa(l.montantEncaisse)}
+                  </td>
+                  <td className="px-5 py-3 text-right tabular-nums">
+                    {formaterFcfa(l.montantARemettre)}
+                  </td>
+                  <td className="px-5 py-3 text-right tabular-nums">
+                    {formaterFcfa(l.montantRemis)}
+                  </td>
+                  <td className="px-5 py-3 text-right tabular-nums text-amber-700">
+                    {formaterFcfa(l.resteARemettre)}
+                  </td>
+                  <td className="px-5 py-3 text-right">
+                    <span
+                      className={
+                        l.ecart === 0
+                          ? "text-xs font-medium text-success"
+                          : "text-xs font-medium text-red-600"
+                      }
+                    >
+                      {l.ecart === 0 ? "Juste" : formaterFcfa(l.ecart)}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3 text-right whitespace-nowrap">
+                    <Link
+                      href={lienDetail("/app/livreurs/detail", l.livreurId)}
+                      className="text-xs font-semibold text-brand"
+                    >
+                      Détail
+                    </Link>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
+        <p className="mt-3 text-xs leading-relaxed text-ink-500">
+          Écart = remis − encaissé. Un écart non nul doit être expliqué dans la{" "}
+          <Link href="/app/rapports/cloture" className="font-semibold text-brand">
+            clôture de journée
+          </Link>
+          .
+        </p>
       </Carte>
 
       {/* Détail par livraison */}

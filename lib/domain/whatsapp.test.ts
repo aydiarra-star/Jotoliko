@@ -145,4 +145,50 @@ describe("analyserMessage", () => {
     const r = analyserMessage(message("Bonsoir Boutique Awa\n1x huile"));
     expect(r.commande.lignes.map((l) => l.designation)).toEqual(["huile"]);
   });
+
+  it("signale un produit manquant sans l'inventer", () => {
+    // Message typique du terrain : une adresse, une date, mais aucun article.
+    const r = analyserMessage(
+      message("Bonjour, livrez à Aïssatou à Parcelles demain."),
+    );
+    expect(r.commande.lignes).toHaveLength(0);
+    expect(r.informationsManquantes.map((m) => m.code)).toContain("PRODUIT");
+    expect(r.informationsManquantes.map((m) => m.libelle)).toContain("Produit");
+  });
+
+  it("signale un montant manquant sans l'inventer", () => {
+    const r = analyserMessage(message("Bonjour\n2x riz"));
+    expect(r.informationsManquantes.map((m) => m.code)).toContain("MONTANT");
+  });
+
+  it("ne signale rien quand le produit et le montant sont présents", () => {
+    const r = analyserMessage(message("Bonjour\n2x riz\nTotal 12 000 FCFA"));
+    expect(r.informationsManquantes).toHaveLength(0);
+  });
+
+  it("conserve une zone pour ce qui n'a pas été compris", () => {
+    const r = analyserMessage(
+      message("Bonjour\n2x riz\nTotal 12 000 FCFA\nJe voudrais aussi quelque chose"),
+    );
+    expect(r.nonCompris.length).toBeGreaterThan(0);
+    expect(r.commande.lignes.map((l) => l.designation)).toEqual(["riz"]);
+  });
+
+  it("ne range pas une demande de livraison du côté de la politesse", () => {
+    // « Bonjour » ouvre la phrase, mais la suite est une instruction : la
+    // perdre comme salutation ferait disparaître une vraie demande client.
+    const r = analyserMessage(
+      message("Bonjour, livrez à Aïssatou à Parcelles demain."),
+    );
+    expect(r.lignesIgnorees).toHaveLength(0);
+    // Elle n'est pas exploitable telle quelle : elle doit remonter comme non
+    // comprise, pas être avalée en silence.
+    expect(r.nonCompris.length).toBeGreaterThan(0);
+  });
+
+  it("ecarte toujours une salutation seule", () => {
+    const r = analyserMessage(message("Bonjour Jotoliko\n2x riz\nTotal 5 000 FCFA"));
+    expect(r.lignesIgnorees).toContain("Bonjour Jotoliko");
+    expect(r.nonCompris).toHaveLength(0);
+  });
 });

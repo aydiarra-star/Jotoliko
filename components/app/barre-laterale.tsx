@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   BarChart3,
+  CalendarCheck,
   ClipboardList,
   Contact,
   LayoutDashboard,
@@ -30,6 +31,7 @@ const LIENS = [
   { href: "/app/livreurs", label: "Livreurs", icon: Users },
   { href: "/app/encaissements", label: "Encaissements", icon: Wallet },
   { href: "/app/rapports", label: "Rapports", icon: BarChart3 },
+  { href: "/app/rapports/cloture", label: "Clôture de journée", icon: CalendarCheck },
 ];
 
 export function BarreLaterale() {

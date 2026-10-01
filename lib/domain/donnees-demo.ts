@@ -11,10 +11,12 @@
 
 import type {
   Adresse,
+  AuditLog,
   Client,
   Commande,
   Entreprise,
   EvenementLivraison,
+  JustificationEcart,
   Livreur,
   Livraison,
   ModePaiement,
@@ -293,6 +295,13 @@ export function construireMonde(maintenant: number): Monde {
     { id: "rem-2", companyId: "ent-1", livreurId: "drv-2", montant: 3000, recordedAt: ilYA(45), note: "Remise partielle.", provenance: "DEMO" },
   ];
 
+  // --- Justifications d'écart -------------------------------------------
+
+  // Un seul livreur porte une explication : les autres écarts de la
+  // démonstration restent à expliquer, ce qui montre les deux cas.
+  const justifications: JustificationEcart[] = [];
+  const audits: AuditLog[] = [];
+
   // --- Événements --------------------------------------------------------
 
   const evenements: EvenementLivraison[] = [];
@@ -336,7 +345,8 @@ export function construireMonde(maintenant: number): Monde {
 
   return {
     entreprise, utilisateurs, vehicules, livreurs, clients,
-    commandes, livraisons, positions, preuves, paiements, remises, evenements,
+    commandes, livraisons, positions, preuves, paiements, remises,
+    justifications, audits, evenements,
   };
 }
 

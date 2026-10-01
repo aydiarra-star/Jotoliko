@@ -7,6 +7,7 @@
 
 import type {
   Commande,
+  JustificationEcart,
   Livraison,
   Paiement,
   Remise,
@@ -194,7 +195,17 @@ export type RapportCaisse = {
     montantRestantAEncaisser: number;
     montantARemettre: number;
     montantRemis: number;
+    resteARemettre: number;
     ecart: number;
+  };
+  /** Écarts de la journée, séparés selon qu'ils sont expliqués ou non. */
+  ecarts: {
+    /** Nombre de livreurs dont la caisse n'est pas juste. */
+    nombre: number;
+    /** Écarts non encore expliqués : ceux qui réclament une action. */
+    nonExpliques: LigneCaisseLivreur[];
+    /** Écarts couverts par une explication écrite. */
+    expliques: LigneCaisseLivreur[];
   };
 };
 
@@ -204,9 +215,15 @@ export function construireRapportCaisse(params: {
   paiements: Paiement[];
   remises: Remise[];
   livreurIds: string[];
+  justifications?: JustificationEcart[];
 }): RapportCaisse {
   const livraisonsDuJour = params.livraisons.filter((l) =>
     dansJournee(l.createdAt, params.maintenant),
+  );
+
+  const { debut } = bornesJournee(params.maintenant);
+  const justificationsDuJour = (params.justifications ?? []).filter(
+    (j) => j.journee === debut,
   );
 
   const lignes = params.livreurIds.map((livreurId) =>
@@ -215,6 +232,7 @@ export function construireRapportCaisse(params: {
       livraisons: livraisonsDuJour,
       paiements: params.paiements,
       remises: params.remises,
+      justifications: justificationsDuJour,
     }),
   );
 
@@ -225,6 +243,7 @@ export function construireRapportCaisse(params: {
       montantRestantAEncaisser: t.montantRestantAEncaisser + l.montantRestantAEncaisser,
       montantARemettre: t.montantARemettre + l.montantARemettre,
       montantRemis: t.montantRemis + l.montantRemis,
+      resteARemettre: t.resteARemettre + l.resteARemettre,
       ecart: t.ecart + l.ecart,
     }),
     {
@@ -233,11 +252,97 @@ export function construireRapportCaisse(params: {
       montantRestantAEncaisser: 0,
       montantARemettre: 0,
       montantRemis: 0,
+      resteARemettre: 0,
       ecart: 0,
     },
   );
 
-  return { journee: bornesJournee(params.maintenant), lignes, totaux };
+  const enEcart = lignes.filter((l) => !l.ecartJuste);
+
+  return {
+    journee: bornesJournee(params.maintenant),
+    lignes,
+    totaux,
+    ecarts: {
+      nombre: enEcart.length,
+      nonExpliques: enEcart.filter((l) => !l.ecartExplique),
+      expliques: enEcart.filter((l) => l.ecartExplique),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Clôture de journée
+// ---------------------------------------------------------------------------
+
+/**
+ * Vue de clôture : de quoi arrêter la journée sans ouvrir un tableur.
+ *
+ * Elle répond dans l'ordre aux questions que se pose le responsable : qu'a-t-on
+ * fait, qu'a-t-on dû encaisser, qu'a-t-on encaissé, qu'a-t-on remis, que
+ * reste-t-il, et y a-t-il un écart qui ne s'explique pas tout seul.
+ */
+export type ClotureJournee = {
+  journee: { debut: number; fin: number };
+  commandes: { total: number; livrees: number; restantes: number };
+  livraisons: { total: number; livrees: number; echouees: number; enCours: number };
+  caisse: RapportCaisse["totaux"];
+  /** Caisse détaillée par livreur, pour la clôture elle-même. */
+  lignes: LigneCaisseLivreur[];
+  /** Une clôture n'est régulière que si aucun écart n'attend d'explication. */
+  prete: boolean;
+  /** Nombre de livreurs dont l'écart reste à expliquer. */
+  ecartsAExpliquer: number;
+};
+
+export function construireClotureJournee(params: {
+  maintenant: number;
+  commandes: Commande[];
+  livraisons: Livraison[];
+  paiements: Paiement[];
+  remises: Remise[];
+  livreurIds: string[];
+  justifications?: JustificationEcart[];
+}): ClotureJournee {
+  const commandesDuJour = params.commandes.filter((c) =>
+    dansJournee(c.dateCommande, params.maintenant),
+  );
+  const livraisonsDuJour = params.livraisons.filter((l) =>
+    dansJournee(l.createdAt, params.maintenant),
+  );
+  const caisse = construireRapportCaisse({
+    maintenant: params.maintenant,
+    livraisons: params.livraisons,
+    paiements: params.paiements,
+    remises: params.remises,
+    livreurIds: params.livreurIds,
+    justifications: params.justifications,
+  });
+
+  const restantes = commandesDuJour.filter(
+    (c) => c.statut !== "LIVREE" && c.statut !== "ANNULEE" && c.statut !== "ECHEC",
+  ).length;
+
+  return {
+    journee: caisse.journee,
+    commandes: {
+      total: commandesDuJour.length,
+      livrees: commandesDuJour.filter((c) => c.statut === "LIVREE").length,
+      restantes,
+    },
+    livraisons: {
+      total: livraisonsDuJour.length,
+      livrees: livraisonsDuJour.filter((l) => l.statut === "LIVREE").length,
+      echouees: livraisonsDuJour.filter((l) => l.statut === "ECHEC").length,
+      enCours: livraisonsDuJour.filter(
+        (l) => l.statut === "EN_ROUTE" || l.statut === "ARRIVE" || l.statut === "AFFECTEE",
+      ).length,
+    },
+    caisse: caisse.totaux,
+    lignes: caisse.lignes,
+    prete: caisse.ecarts.nonExpliques.length === 0,
+    ecartsAExpliquer: caisse.ecarts.nonExpliques.length,
+  };
 }
 
 // ---------------------------------------------------------------------------
