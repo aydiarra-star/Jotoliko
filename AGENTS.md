@@ -69,3 +69,34 @@ npm run build
 3. **Une seule cible au lancement** : les sociétés de livraison de Dakar.
 4. **Le suivi GPS temps réel est hors périmètre MVP** (coût batterie/data, adhésion
    livreurs, valeur inférieure à la caisse).
+
+## Règle d'honnêteté des données (non négociable)
+
+Le produit et le site ne doivent **jamais** présenter comme réelle une donnée qui
+ne l'est pas. Concrètement :
+
+- Aucune position GPS inventée. Une position périmée est affichée comme telle, ou
+  pas du tout. Voir `evaluerFraicheur` dans `lib/tracking.ts`.
+- Aucune ETA inventée. Sans vitesse réellement mesurée, l'ETA est « indisponible ».
+  Voir `calculerEta`. Il n'existe aucun paramètre de vitesse par défaut.
+- Aucune route dessinée qui n'existe pas : le tracé suit les points enregistrés.
+- Aucun chiffre d'amélioration marketing (« -40 % de temps ») sans mesure réelle.
+- Aucun faux témoignage client. Le contenu parle de cas d'usage, et le dit.
+- Toute donnée fictive porte un bandeau « Mode démonstration ».
+
+Cette règle est testée : `lib/tracking.test.ts` couvre explicitement les cas
+GPS désactivé, position ancienne, position absente, vitesse non mesurable et
+statut non suivi. Toute modification de `lib/tracking.ts` doit garder ces tests
+au vert.
+
+## Conventions de code
+
+- `lib/tracking.ts` contient la logique métier pure et testable. Elle ne doit
+  dépendre ni de React ni du DOM.
+- Les composants de suivi sont sous `components/tracking/`.
+- La carte est chargée côté client uniquement (`next/dynamic` avec `ssr: false`),
+  car Leaflet a besoin de `window`.
+- Les données de démonstration sont sous `lib/demo.ts`, avec des positions
+  exprimées en **minutes écoulées** et non en horodatage absolu : cela évite tout
+  décalage d'hydratation dans l'export statique et garde la démo cohérente.
+- Lancer les tests : `npm test`.
