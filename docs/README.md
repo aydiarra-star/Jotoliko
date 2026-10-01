@@ -10,6 +10,7 @@
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Comprendre la stack, le multi-tenant, l'API et le hors ligne |
 | [MODELE-DONNEES.md](MODELE-DONNEES.md) | Comprendre les tables, les relations et les choix de modélisation |
 | [WIREFRAMES.md](WIREFRAMES.md) | Voir les écrans clés et les principes UX |
+| [SUIVI-LIVRAISON.md](SUIVI-LIVRAISON.md) | Comprendre le suivi de livraison, la fraîcheur des positions et le contrat d'API |
 | [../prisma/schema.prisma](../prisma/schema.prisma) | Voir le schéma exécutable |
 
 ## Résumé du projet

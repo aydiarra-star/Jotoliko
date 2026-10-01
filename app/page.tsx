@@ -5,7 +5,7 @@ import { DashboardMockup } from "@/components/landing/dashboard-mockup";
 import { Reveal } from "@/components/ui/reveal";
 import { CTA, Section, SectionHeading } from "@/components/ui/section";
 import { Icon } from "@/components/ui/icon";
-import { features, markets, personas, problems, roadmap, stats, testimonials } from "@/lib/content";
+import { engagements, features, markets, parcours, personas, problems, roadmap, scenarios } from "@/lib/content";
 
 export const metadata: Metadata = {
   title: "Jotoliko — Gérez. Livrez. Encaissez.",
@@ -107,10 +107,10 @@ export default function HomePage() {
         </div>
       </Section>
 
-      {/* STATS */}
+      {/* ENGAGEMENTS */}
       <Section className="pt-0">
         <div className="grid gap-6 rounded-3xl bg-ink px-6 py-12 text-white sm:px-12 lg:grid-cols-4">
-          {stats.map((s, i) => (
+          {engagements.map((s, i) => (
             <Reveal key={s.label} delay={i * 0.06}>
               <div>
                 <p className="text-4xl font-semibold text-white">{s.value}</p>
@@ -118,6 +118,43 @@ export default function HomePage() {
               </div>
             </Reveal>
           ))}
+        </div>
+        <p className="mt-4 text-xs text-ink-500">
+          Ces éléments décrivent la façon dont Jotoliko est conçu. Ce ne sont pas des
+          résultats mesurés chez des clients : nous ne publierons des gains chiffrés
+          qu&apos;après les avoir relevés sur des opérations réelles.
+        </p>
+      </Section>
+
+      {/* UNE JOURNÉE AVEC JOTOLIKO */}
+      <Section className="pt-0">
+        <SectionHeading
+          eyebrow="Une journée avec Jotoliko"
+          title="De la commande au rapport, sans rupture."
+          body="Neuf étapes, un seul outil. Chaque étape alimente la suivante : la caisse se calcule depuis les livraisons, le rapport se calcule depuis la caisse."
+        />
+        <ol className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {parcours.map((p, i) => (
+            <Reveal key={p.etape} delay={i * 0.04}>
+              <li className="card flex h-full items-start gap-4 p-5">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-soft text-sm font-semibold text-brand">
+                  {i + 1}
+                </span>
+                <span>
+                  <h3 className="text-base font-semibold">{p.etape}</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-ink-500">{p.detail}</p>
+                </span>
+              </li>
+            </Reveal>
+          ))}
+        </ol>
+        <div className="mt-8">
+          <Link
+            href="/suivi/1042"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-brand"
+          >
+            Voir un suivi de livraison en démonstration <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
       </Section>
 
@@ -203,14 +240,15 @@ export default function HomePage() {
         </div>
       </Section>
 
-      {/* TESTIMONIALS */}
+      {/* SCÉNARIOS */}
       <Section className="pt-0">
         <SectionHeading
-          eyebrow="Témoignages"
-          title="Ce que change Jotoliko, concrètement."
+          eyebrow="Cas d'usage"
+          title="Ce que Jotoliko change, concrètement."
+          body="Des situations que le produit est conçu pour résoudre, pas des témoignages de clients."
         />
         <div className="mt-12 grid gap-4 lg:grid-cols-3">
-          {testimonials.map((t, i) => (
+          {scenarios.map((t, i) => (
             <Reveal key={t.author} delay={i * 0.07}>
               <figure className="card flex h-full flex-col justify-between p-7">
                 <blockquote className="text-base leading-relaxed text-ink">
@@ -224,6 +262,10 @@ export default function HomePage() {
             </Reveal>
           ))}
         </div>
+        <p className="mt-4 text-xs text-ink-500">
+          Ces situations illustrent l&apos;usage prévu du produit. Elles ne proviennent pas
+          d&apos;entretiens avec des clients de Jotoliko.
+        </p>
       </Section>
 
       {/* ROADMAP */}

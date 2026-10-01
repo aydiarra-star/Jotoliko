@@ -50,11 +50,28 @@ export const markets = [
   "Cameroun",
 ];
 
-export const stats = [
-  { value: "-40%", label: "de temps passé à coordonner les livraisons" },
-  { value: "100%", label: "des encaissements tracés au centime près" },
-  { value: "0", label: "litre d'encre pour vos bordereaux papier" },
-  { value: "24/7", label: "visibilité sur vos opérations terrain" },
+// Ces éléments décrivent la conception du produit, pas des performances mesurées.
+// Aucun chiffre d'amélioration n'est affiché tant qu'il n'a pas été relevé chez
+// un client réel.
+export const engagements = [
+  { value: "100 %", label: "des encaissements rattachés à une livraison et à un livreur" },
+  { value: "0", label: "double saisie : la caisse se calcule depuis les livraisons" },
+  { value: "Hors ligne", label: "le livreur continue de travailler sans réseau" },
+  { value: "1 journée", label: "objectif de prise en main pour une équipe terrain" },
+];
+
+// Enchaînement des étapes, de la commande au rapport.
+// Sert de section « Une journée avec Jotoliko » sur la page d'accueil.
+export const parcours = [
+  { etape: "Commande reçue", detail: "Saisie au bureau ou transmise par WhatsApp." },
+  { etape: "Commande affectée", detail: "Attribuée à un livreur disponible." },
+  { etape: "Livreur en route", detail: "Le livreur ouvre sa mission et démarre." },
+  { etape: "Suivi", detail: "Position et avancement visibles au bureau." },
+  { etape: "Arrivée chez le client", detail: "Le livreur déclare son arrivée." },
+  { etape: "Preuve de livraison", detail: "Photo, réceptionnaire, horodatage." },
+  { etape: "Encaissement", detail: "Montant reçu et mode de paiement enregistrés." },
+  { etape: "Caisse", detail: "Montant à remettre et écart calculés par livreur." },
+  { etape: "Rapport", detail: "Journée consolidée, exportable." },
 ];
 
 export const problems = [
@@ -98,7 +115,7 @@ export const features = [
     body: "Créez vos livreurs, activez ou désactivez leur accès, et voyez en un coup d'œil qui est disponible, qui est en tournée, et qui a terminé.",
     points: [
       "Fiches livreurs et véhicules",
-      "Disponibilité en temps réel",
+      "Disponibilité permanente",
       "Performance individuelle",
       "Désactivation immédiate d'un accès",
     ],
@@ -134,12 +151,12 @@ export const features = [
     icon: "MapPin",
     title: "Suivi GPS",
     tagline: "Vos livreurs sur une carte, en direct",
-    body: "Suivez les positions de vos livreurs sur une carte temps réel, vérifiez qu'une tournée avance, et rassurez vos clients sur l'arrivée.",
+    body: "Suivez la position de vos livreurs sur une carte lorsque leur téléphone transmet réellement des positions, vérifiez qu'une tournée avance, et rassurez vos clients sur l'arrivée. Quand le réseau est coupé, Jotoliko affiche la dernière position connue et son ancienneté — jamais une position inventée.",
     points: [
-      "Carte temps réel",
-      "Historique des trajets",
+      "Carte de suivi d'une livraison",
+      "Trajet réellement enregistré",
       "Zones et repères",
-      "Alertes de retard",
+      "Dernière position connue en cas de coupure",
     ],
   },
   {
@@ -328,22 +345,25 @@ export const blogPosts = [
   },
 ];
 
-export const testimonials = [
+// Scénarios d'usage, pas des témoignages de clients réels.
+// Jotoliko n'a pas encore de clients publiés : présenter de faux témoignages
+// serait malhonnête envers les prospects.
+export const scenarios = [
   {
     quote:
-      "Avant, on clôturait la caisse à 22h en se disputant. Aujourd'hui, on sait exactement ce que chaque livreur a collecté.",
+      "La caisse se clôture sans discussion : on sait exactement ce que chaque livreur a collecté, commande par commande.",
     author: "Responsable d'exploitation",
     role: "Société de livraison, Dakar",
   },
   {
     quote:
-      "Mes commandes Instagram sont enfin suivies. Je sais quelle commande est partie, et laquelle a été payée.",
+      "Les commandes reçues sur les réseaux sociaux sont suivies comme les autres : on sait laquelle est partie et laquelle est payée.",
     author: "Fondatrice",
     role: "Boutique en ligne, Abidjan",
   },
   {
     quote:
-      "L'application livreur a été adoptée en une journée. C'est simple, c'est tout ce qu'on voulait.",
+      "L'application livreur se limite à l'essentiel : voir les missions, appeler, déclarer la livraison.",
     author: "Gérant",
     role: "Grossiste, Dakar",
   },
@@ -374,7 +394,7 @@ export const pricing = [
     features: [
       "Jusqu'à 15 utilisateurs",
       "Jusqu'à 30 livreurs",
-      "Suivi GPS temps réel",
+      "Suivi GPS des livraisons",
       "Encaissements & caisse",
       "Tournées multi-livraisons",
       "Rapports mensuels et export PDF",

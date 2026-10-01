@@ -10,11 +10,14 @@ import {
   Wallet,
 } from "lucide-react";
 
+// Aperçu d'interface. Les valeurs sont fictives et servent uniquement à montrer
+// la disposition. Aucun pourcentage d'évolution n'est affiché : ces chiffres ne
+// sont pas mesurés.
 const kpis = [
-  { label: "Commandes du jour", value: "184", delta: "+12%", tone: "brand" },
-  { label: "Livraisons terminées", value: "147", delta: "+8%", tone: "success" },
-  { label: "CA encaissé", value: "4,2 M", delta: "FCFA", tone: "ink" },
-  { label: "En tournée", value: "9", delta: "livreurs", tone: "brand" },
+  { label: "Commandes du jour", value: "184", delta: "dont 37 à affecter", tone: "brand" },
+  { label: "Livraisons terminées", value: "112", delta: "dont 4 échecs", tone: "success" },
+  { label: "CA encaissé", value: "1,24 M", delta: "FCFA", tone: "ink" },
+  { label: "En tournée", value: "31", delta: "9 livreurs actifs", tone: "brand" },
 ];
 
 const rows = [
@@ -49,6 +52,9 @@ export function DashboardMockup() {
           <span className="h-2.5 w-2.5 rounded-full bg-slate-300" />
           <span className="ml-3 rounded-md bg-white px-2.5 py-1 text-[11px] font-medium text-ink-500 ring-1 ring-slate-200">
             app.jotoliko.com/dashboard
+          </span>
+          <span className="ml-auto rounded-md bg-amber-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-200">
+            Démo
           </span>
         </div>
 
