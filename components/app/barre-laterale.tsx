@@ -6,6 +6,7 @@ import { useState } from "react";
 import {
   BarChart3,
   ClipboardList,
+  Contact,
   LayoutDashboard,
   Menu,
   Package,
@@ -24,6 +25,7 @@ import { operationsEnAttente, operationsEnEchec } from "@/lib/domain/operations"
 const LIENS = [
   { href: "/app", label: "Tableau de bord", icon: LayoutDashboard, exact: true },
   { href: "/app/commandes", label: "Commandes", icon: ClipboardList },
+  { href: "/app/clients", label: "Clients", icon: Contact },
   { href: "/app/livraisons", label: "Livraisons", icon: Package },
   { href: "/app/livreurs", label: "Livreurs", icon: Users },
   { href: "/app/encaissements", label: "Encaissements", icon: Wallet },

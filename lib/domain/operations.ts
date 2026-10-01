@@ -10,12 +10,15 @@
 //   - chaque opération produit un événement horodaté, ce qui constitue l'audit.
 
 import { ingererPosition, type PositionEntrante } from "./gps";
+import { normaliserNumeroSenegal } from "./whatsapp";
 import {
   changerStatutCommande,
   changerStatutLivraison,
   statutCommandeDepuisLivraison,
 } from "./statuts";
 import type {
+  Adresse,
+  Client,
   Commande,
   EvenementLivraison,
   Livraison,
@@ -195,6 +198,132 @@ export type NouvelleCommande = {
   note?: string;
   dateCommande?: number;
 };
+
+// ---------------------------------------------------------------------------
+// Clients
+// ---------------------------------------------------------------------------
+
+export type NouveauClient = {
+  nom: string;
+  telephone: string;
+  adresse: Adresse;
+  note?: string;
+};
+
+/**
+ * Crée un client. Le nom et l'adresse sont obligatoires ; le téléphone est
+ * normalisé quand il est lisible, conservé tel quel sinon — un numéro mal
+ * saisi reste visible et corrigeable, il ne disparaît pas.
+ */
+export function creerClient(
+  etat: EtatApplication,
+  params: NouveauClient,
+  ctx: Contexte,
+): Resultat<EtatApplication> {
+  if (!params.nom.trim()) return echec("Le nom du client est obligatoire.");
+  if (!params.adresse.ligne.trim()) return echec("L'adresse est obligatoire.");
+  if (!params.adresse.zone.trim()) return echec("La zone est obligatoire.");
+
+  const telephoneBrut = params.telephone.trim();
+  if (!telephoneBrut) return echec("Le téléphone est obligatoire.");
+
+  const client: Client = {
+    id: ctx.nouvelId(),
+    companyId: etat.monde.entreprise.id,
+    nom: params.nom.trim(),
+    telephone: normaliserNumeroSenegal(telephoneBrut) ?? telephoneBrut,
+    adresse: {
+      ...params.adresse,
+      ligne: params.adresse.ligne.trim(),
+      zone: params.adresse.zone.trim(),
+      ville: params.adresse.ville.trim() || "Dakar",
+      repere: params.adresse.repere?.trim() || undefined,
+    },
+    note: params.note?.trim() || undefined,
+    createdAt: ctx.maintenant,
+    provenance: etat.monde.entreprise.provenance,
+  };
+
+  return ok({ ...etat, monde: { ...etat.monde, clients: [...etat.monde.clients, client] } });
+}
+
+/**
+ * Modifie un client.
+ *
+ * Un client déjà engagé dans une commande ou une livraison ne peut pas être
+ * supprimé sans effacer l'historique qui s'y rattache : on le modifie, on ne
+ * l'efface pas.
+ */
+export function modifierClient(
+  etat: EtatApplication,
+  params: { clientId: string } & Partial<NouveauClient>,
+  ctx: Contexte,
+): Resultat<EtatApplication> {
+  const existant = etat.monde.clients.find((c) => c.id === params.clientId);
+  if (!existant) return echec("Client introuvable.");
+
+  if (params.nom !== undefined && !params.nom.trim()) {
+    return echec("Le nom du client ne peut pas être vide.");
+  }
+  if (params.adresse?.ligne !== undefined && !params.adresse.ligne.trim()) {
+    return echec("L'adresse ne peut pas être vide.");
+  }
+
+  const telephone =
+    params.telephone !== undefined
+      ? normaliserNumeroSenegal(params.telephone) ?? params.telephone.trim()
+      : existant.telephone;
+
+  const misAJour: Client = {
+    ...existant,
+    nom: params.nom?.trim() ?? existant.nom,
+    telephone,
+    adresse: params.adresse ? { ...existant.adresse, ...params.adresse } : existant.adresse,
+    note: params.note !== undefined ? params.note.trim() || undefined : existant.note,
+  };
+
+  return ok({
+    ...etat,
+    monde: {
+      ...etat.monde,
+      clients: etat.monde.clients.map((c) => (c.id === misAJour.id ? misAJour : c)),
+    },
+  });
+}
+
+/**
+ * Un client peut-il être supprimé sans casser l'historique ?
+ *
+ * Supprimer un client référencé par une commande rendrait cette commande
+ * orpheline : elle continuerait d'exister sans destinataire. On refuse.
+ */
+export function clientSupprimable(etat: EtatApplication, clientId: string): Resultat<true> {
+  const commandes = etat.monde.commandes.filter((c) => c.clientId === clientId).length;
+  if (commandes > 0) {
+    return echec(
+      `Ce client est rattaché à ${commandes} commande${commandes > 1 ? "s" : ""}. ` +
+        "Le supprimer effacerait cet historique : désactivez-le ou conservez-le.",
+    );
+  }
+  return ok(true);
+}
+
+export function supprimerClient(
+  etat: EtatApplication,
+  clientId: string,
+  _ctx: Contexte,
+): Resultat<EtatApplication> {
+  const existant = etat.monde.clients.find((c) => c.id === clientId);
+  if (!existant) return echec("Client introuvable.");
+
+  const autorise = clientSupprimable(etat, clientId);
+  if (!autorise.ok) return echec(autorise.raison);
+
+  return ok({
+    ...etat,
+    monde: { ...etat.monde, clients: etat.monde.clients.filter((c) => c.id !== clientId) },
+  });
+}
 
 export function creerCommande(
   etat: EtatApplication,

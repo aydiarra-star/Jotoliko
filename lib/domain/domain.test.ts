@@ -19,8 +19,12 @@ import {
   annulerCommande,
   affecterLivreur,
   arriverLivraison,
+  creerClient,
   creerCommande,
   creerLivraisonDepuisCommande,
+  clientSupprimable,
+  modifierClient,
+  supprimerClient,
   demarrerLivraison,
   echouerLivraison,
   enregistrerPaiement,
@@ -935,5 +939,142 @@ describe("Correspondance commande / livraison", () => {
     expect(statutCommandeDepuisLivraison("ARRIVE")).toBe("EN_LIVRAISON");
     expect(statutCommandeDepuisLivraison("LIVREE")).toBe("LIVREE");
     expect(statutCommandeDepuisLivraison("ECHEC")).toBe("ECHEC");
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Clients
+// ---------------------------------------------------------------------------
+
+describe("creerClient", () => {
+  const adresseValide = { ligne: "Liberté 6", zone: "Liberté 6", ville: "Dakar" };
+
+  it("crée un client avec une adresse et un mobile", () => {
+    const r = creerClient(
+      etatInitial(),
+      { nom: "Awa Fall", telephone: "77 111 22 33", adresse: adresseValide },
+      contexte(),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const cree = r.valeur.monde.clients.at(-1)!;
+    expect(cree.nom).toBe("Awa Fall");
+    expect(cree.telephone).toBe("+221771112233");
+    expect(cree.companyId).toBe("ent-1");
+  });
+
+  it("normalise aussi un numéro fixe", () => {
+    const r = creerClient(
+      etatInitial(),
+      { nom: "Cabinet", telephone: "33 800 00 00", adresse: adresseValide },
+      contexte(),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.valeur.monde.clients.at(-1)!.telephone).toBe("+221338000000");
+  });
+
+  it("conserve un numéro illisible au lieu de le perdre", () => {
+    // Le bureau doit pouvoir voir et corriger ce qu'il a saisi.
+    const r = creerClient(
+      etatInitial(),
+      { nom: "Client", telephone: "à préciser", adresse: adresseValide },
+      contexte(),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.valeur.monde.clients.at(-1)!.telephone).toBe("à préciser");
+  });
+
+  it("refuse un client sans nom, sans adresse ou sans téléphone", () => {
+    const sansNom = creerClient(
+      etatInitial(),
+      { nom: "  ", telephone: "77 111 22 33", adresse: adresseValide },
+      contexte(),
+    );
+    expect(sansNom.ok).toBe(false);
+
+    const sansAdresse = creerClient(
+      etatInitial(),
+      { nom: "Awa", telephone: "77 111 22 33", adresse: { ...adresseValide, ligne: "" } },
+      contexte(),
+    );
+    expect(sansAdresse.ok).toBe(false);
+
+    const sansTelephone = creerClient(
+      etatInitial(),
+      { nom: "Awa", telephone: "", adresse: adresseValide },
+      contexte(),
+    );
+    expect(sansTelephone.ok).toBe(false);
+  });
+
+  it("accepte un client sans point GPS", () => {
+    // L'adressage est souvent imprécis : refuser la fiche serait absurde.
+    const r = creerClient(
+      etatInitial(),
+      { nom: "Awa", telephone: "77 111 22 33", adresse: adresseValide },
+      contexte(),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.valeur.monde.clients.at(-1)!.adresse.lat).toBeUndefined();
+  });
+});
+
+describe("modifierClient", () => {
+  it("met à jour les champs fournis et laisse les autres", () => {
+    const depart = etatInitial();
+    const existant = depart.monde.clients[0];
+    const r = modifierClient(depart, { clientId: existant.id, nom: "Nouveau nom" }, contexte());
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const apres = r.valeur.monde.clients.find((c) => c.id === existant.id)!;
+    expect(apres.nom).toBe("Nouveau nom");
+    expect(apres.telephone).toBe(existant.telephone);
+    expect(apres.adresse).toEqual(existant.adresse);
+  });
+
+  it("refuse un nom vide", () => {
+    const depart = etatInitial();
+    const r = modifierClient(depart, { clientId: depart.monde.clients[0].id, nom: "  " }, contexte());
+    expect(r.ok).toBe(false);
+  });
+
+  it("refuse un client inconnu", () => {
+    const r = modifierClient(etatInitial(), { clientId: "inexistant", nom: "X" }, contexte());
+    expect(r.ok).toBe(false);
+  });
+});
+
+describe("supprimerClient", () => {
+  it("supprime un client sans historique", () => {
+    const depart = etatInitial();
+    const cible = depart.monde.clients.find(
+      (c) => !depart.monde.commandes.some((cmd) => cmd.clientId === c.id),
+    );
+    if (!cible) return;
+    const r = supprimerClient(depart, cible.id, contexte());
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.valeur.monde.clients.some((c) => c.id === cible.id)).toBe(false);
+  });
+
+  it("refuse de supprimer un client rattaché à une commande", () => {
+    // Sinon la commande survivrait sans destinataire.
+    const depart = etatInitial();
+    const engage = depart.monde.commandes[0].clientId;
+    const r = supprimerClient(depart, engage, contexte());
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.raison).toContain("commande");
+  });
+
+  it("explique pourquoi avant de refuser", () => {
+    const depart = etatInitial();
+    const engage = depart.monde.commandes[0].clientId;
+    const r = clientSupprimable(depart, engage);
+    expect(r.ok).toBe(false);
   });
 });

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Carte, EnTetePage } from "@/components/app/partage/ui";
 import { FormulaireCommande } from "@/components/app/commandes/formulaire-commande";
 import { useMagasin } from "@/lib/magasin";
+import { lienDetail } from "@/lib/use-parametre";
 
 export default function NouvelleCommandePage() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function NouvelleCommandePage() {
             const r = creerCommande(v);
             if (!r.ok) return r.raison;
             const creee = r.valeur.monde.commandes.at(-1);
-            router.push(creee ? `/app/commandes/${creee.id}` : "/app/commandes");
+            router.push(creee ? lienDetail("/app/commandes/detail", creee.id) : "/app/commandes");
             return null;
           }}
           onAnnuler={() => router.push("/app/commandes")}

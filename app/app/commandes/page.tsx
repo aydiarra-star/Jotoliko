@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { MessageSquare, Search } from "lucide-react";
 import {
   BandeauDemo,
   Carte,
@@ -56,9 +56,14 @@ export default function CommandesPage() {
         titre="Commandes"
         description="Toutes les commandes de l'entreprise, de la saisie à la livraison."
         actions={
-          <Link href="/app/commandes/nouvelle" className="btn-primary text-sm">
-            Nouvelle commande
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/app/commandes/whatsapp" className="btn-ghost text-sm">
+              <MessageSquare className="h-4 w-4" aria-hidden /> Depuis WhatsApp
+            </Link>
+            <Link href="/app/commandes/nouvelle" className="btn-primary text-sm">
+              Nouvelle commande
+            </Link>
+          </div>
         }
       />
 

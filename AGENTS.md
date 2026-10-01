@@ -126,6 +126,25 @@ Ordre imposé : `ARRIVE` → enregistrer la preuve → `LIVREE`. Couvert par
 - Chaîne vérifiée de bout en bout : commande → affectation → départ → arrivée →
   preuve → livraison → encaissement → caisse → rapport.
 
+## Import WhatsApp
+
+- `lib/domain/whatsapp.ts` analyse un message collé et propose une commande.
+  Il ne crée rien : l'écran laisse toujours relire et corriger avant création.
+- Les formules de politesse et les phrases d'ouverture (« Bonjour Jotoliko »,
+  « Merci ») sont écartées et listées comme telles. Ne jamais les transformer en
+  ligne d'article : c'est un bug déjà corrigé, couvert par
+  `lib/domain/whatsapp.test.ts`.
+- Ce qui n'est pas compris est affiché dans une section « Non compris », jamais
+  deviné silencieusement. Même règle d'honnêteté que pour le suivi GPS.
+- Le prix unitaire n'est presque jamais dans le message : le total annoncé est
+  conservé (`montantAnnonce`) et rapproché du total des lignes à l'encaissement.
+
+## Suppression d'un client
+
+`clientSupprimable` (`lib/domain/operations.ts`) refuse de supprimer un client
+rattaché à des commandes : l'historique disparaîtrait. La règle est dans le
+domaine, pas dans l'écran.
+
 ## Déploiement
 
 `.github/workflows/deploy-pages.yml` publie `./out` sur `gh-pages` au push sur

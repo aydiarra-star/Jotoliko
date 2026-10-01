@@ -33,6 +33,7 @@ import {
   annulerCommande,
   arriverLivraison,
   creerCommande,
+  creerClient,
   creerLivraisonDepuisCommande,
   demarrerLivraison,
   echouerLivraison,
@@ -40,12 +41,15 @@ import {
   enregistrerPosition,
   enregistrerRemise,
   faireEvoluerCommande,
+  modifierClient,
   modifierCommande,
   rejouerOperation,
+  supprimerClient,
   synchroniser,
   terminerLivraison,
   type Contexte,
   type EtatApplication,
+  type NouveauClient,
   type NouvelleCommande,
 } from "@/lib/domain/operations";
 import type {
@@ -140,6 +144,9 @@ type Magasin = {
   synchroniserTout: () => void;
   rejouer: (clientId: string) => void;
   // Actions nommées, pour que les écrans n'aient pas à construire de closures.
+  creerClient: (p: NouveauClient) => Resultat<EtatApplication>;
+  modifierClient: (p: { clientId: string } & Partial<NouveauClient>) => Resultat<EtatApplication>;
+  supprimerClient: (clientId: string) => Resultat<EtatApplication>;
   creerCommande: (p: NouvelleCommande) => Resultat<EtatApplication>;
   modifierCommande: (p: Parameters<typeof modifierCommande>[1]) => Resultat<EtatApplication>;
   faireEvoluerCommande: (commandeId: string, vers: StatutCommande) => Resultat<EtatApplication>;
@@ -228,6 +235,9 @@ export function FournisseurMagasin({ children }: { children: ReactNode }) {
       synchroniserTout: () => dispatch({ type: "SYNCHRONISER" }),
       rejouer: (clientId) => dispatch({ type: "REJOUER", clientId }),
 
+      creerClient: (p) => appliquer((e, c) => creerClient(e, p, c)),
+      modifierClient: (p) => appliquer((e, c) => modifierClient(e, p, c)),
+      supprimerClient: (id) => appliquer((e, c) => supprimerClient(e, id, c)),
       creerCommande: (p) => appliquer((e, c) => creerCommande(e, p, c)),
       modifierCommande: (p) => appliquer((e, c) => modifierCommande(e, p, c)),
       faireEvoluerCommande: (commandeId, vers) =>
