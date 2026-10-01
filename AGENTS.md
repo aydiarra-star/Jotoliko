@@ -14,17 +14,43 @@ dépôt.
 
 ### Jetons et permissions
 
-- Le jeton d'intégration injecté (`GITHUB_TOKEN`, préfixe `ghu_`) est **en lecture
-  seule** sur `aydiarra-star/Jotoliko`. L'API répond `403 Resource not accessible by
-  integration` sur toute écriture (`git/refs`, `contents`). Le champ
-  `permissions.push` renvoyé par l'API est trompeur : il décrit le rôle du compte,
-  pas les droits du jeton.
-- **Les fichiers `.github/workflows/*` ne peuvent pas être poussés sans un jeton
-  ayant le scope `workflow`.** GitHub rejette le push, même via l'API Contents.
-  C'est une protection côté GitHub, pas un problème de configuration.
-- Conséquence : ne jamais inclure `.github/workflows/` dans un commit destiné à être
-  poussé avec un jeton sans scope `workflow`. Le fichier `deploy-pages.yml` est
-  versionné localement mais doit être ajouté manuellement depuis l'interface GitHub.
+Trois niveaux de jeton ont été observés, à ne pas confondre :
+
+- Un jeton d'intégration GitHub (`ghu_`) est **en lecture seule** : l'API répond
+  `403 Resource not accessible by integration` sur toute écriture. Le champ
+  `permissions.push` renvoyé par l'API est trompeur : il décrit le rôle du
+  compte, pas les droits du jeton.
+- Un jeton personnel (`ghp_`) avec le seul scope `repo` **peut pousser du code**,
+  mais GitHub refuse tout commit qui touche `.github/workflows/` :
+  `refusing to allow a Personal Access Token to create or update workflow
+  .github/workflows/deploy-pages.yml without 'workflow' scope`. C'est une
+  protection côté GitHub, pas un problème de configuration.
+- Un jeton avec le scope `workflow` en plus de `repo` peut tout pousser.
+
+Conséquence : ne jamais inclure `.github/workflows/` dans un commit destiné à
+être poussé avec un jeton sans scope `workflow`. Le fichier `deploy-pages.yml`
+est versionné localement mais doit être ajouté manuellement depuis l'interface
+GitHub.
+
+Si une branche contient déjà `.github/workflows/` dans son historique, la
+pousser est impossible avec un jeton sans scope `workflow`, même si le fichier
+est identique côté distant. Contournement utilisé le 2026-10-01 : réécrire
+l'historique dans une branche de publication dédiée.
+
+```bash
+export FILTER_BRANCH_SQUELCH_WARNING=1
+git branch -f publish-site feat/marketing-site
+git filter-branch -f --index-filter \
+  'git rm -r --cached --ignore-unmatch .github/workflows' \
+  --prune-empty -- <premier-commit>..publish-site
+```
+
+`feat/marketing-site` reste intacte : seule `publish-site` est réécrite.
+Vérifier ensuite que l'écart de contenu se limite au fichier de workflow :
+
+```bash
+git diff --stat feat/marketing-site publish-site
+```
 
 ### Déploiement
 
@@ -33,6 +59,36 @@ dépôt.
   `NEXT_PUBLIC_BASE_PATH=/Jotoliko`. Sans cela, les assets renvoient 404.
 - `trailingSlash` est activé : chaque route produit un dossier avec `index.html`.
 - URL : https://aydiarra-star.github.io/Jotoliko/
+
+Le dossier `out/` est ignoré par git (`.gitignore`). La branche `gh-pages` ne peut
+donc être produite que par le workflow `deploy-pages.yml`, ou par un déploiement
+manuel. Le 2026-10-01, faute de jeton disposant du scope `workflow`, la branche
+`gh-pages` a été publiée manuellement :
+
+```bash
+rm -rf out
+NEXT_PUBLIC_BASE_PATH=/Jotoliko \
+NEXT_PUBLIC_SITE_URL=https://aydiarra-star.github.io/Jotoliko \
+npm run build
+touch out/.nojekyll          # sans cela, Jekyll ignore les dossiers _next
+mkdir -p /tmp/ghp && cp -a out/. /tmp/ghp/
+cd /tmp/ghp && git init -b gh-pages && git add -A
+git -c user.name=openhands -c user.email=openhands@all-hands.dev commit -m "..."
+git push --force https://<jeton>@github.com/aydiarra-star/Jotoliko.git gh-pages
+```
+
+Sauvegarder la référence précédente avant d'écraser : `git tag -f
+backup-gh-pages <sha>`. Le `.nojekyll` est indispensable : sans lui, GitHub Pages
+applique Jekyll et ignore `_next`, ce qui casse tous les assets.
+
+Vérification après déploiement (compter une minute de reconstruction) :
+
+```bash
+for u in "" "app/" "secteurs/" "communication/"; do
+  curl -s -o /dev/null -w "/$u -> %{http_code}\n" \
+    "https://aydiarra-star.github.io/Jotoliko/$u"
+done
+```
 
 ### Build
 
@@ -151,8 +207,15 @@ domaine, pas dans l'écran.
 `main` (ou via `workflow_dispatch`). Le build doit recevoir
 `NEXT_PUBLIC_BASE_PATH=/Jotoliko`, sinon les assets 404.
 
-Limite connue de l'environnement d'agent : le `GITHUB_TOKEN` disponible est un
-jeton d'installation d'application GitHub en lecture seule (`contents: read`).
-`git push` échoue en 403 (« Resource not accessible by integration »). Le travail
-est donc committé localement et doit être poussé par un humain, ou par un jeton
-disposant de `contents: write`.
+État au 2026-10-01 : la branche `publish-site` (contenu de `feat/marketing-site`
+sans `.github/workflows/`) a été poussée, et `gh-pages` a été publiée
+manuellement. Le site marketing à jour et l'application sous `/app/` sont en
+ligne. Le workflow `deploy-pages.yml` reste absent du dépôt distant : tant
+qu'il n'y est pas, chaque publication de `gh-pages` doit être faite à la main.
+
+Rappel de sécurité : ne jamais écrire un jeton dans `.git/config` ni dans un
+fichier versionné. Pousser avec l'URL contenant le jeton en argument ponctuel :
+
+```bash
+git push "https://<jeton>@github.com/aydiarra-star/Jotoliko.git" <branche>
+```
