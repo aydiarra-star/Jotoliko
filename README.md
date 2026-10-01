@@ -48,40 +48,21 @@ par GitHub Pages.
 
 ## Déploiement
 
-Le site est publié sur GitHub Pages depuis la branche **`gh-pages`** :
+Le déploiement passe par **`.github/workflows/deploy-pages.yml`**.
+
+Le workflow se déclenche à chaque push sur `main` (et manuellement via
+`workflow_dispatch`). Il installe les dépendances, construit l'export statique avec
+le bon préfixe de chemin, puis publie `./out` sur la branche `gh-pages` — qui est la
+source configurée pour GitHub Pages sur ce dépôt.
 
 **https://aydiarra-star.github.io/Jotoliko/**
 
-GitHub Pages est configuré sur ce dépôt avec `gh-pages` comme source
-(Settings → Pages → Source = Deploy from a branch → `gh-pages` / `root`).
-Aucun workflow GitHub Actions n'est requis.
+`NEXT_PUBLIC_BASE_PATH` vaut `/Jotoliko` car le site est servi depuis un sous-chemin.
+Sur un domaine racine (Vercel, domaine personnalisé), laissez-le vide.
 
-Pour republier après une modification :
-
-```bash
-NEXT_PUBLIC_BASE_PATH=/Jotoliko \
-NEXT_PUBLIC_SITE_URL=https://aydiarra-star.github.io/Jotoliko \
-npm run build
-
-# publier ./out sur la branche gh-pages
-git worktree add --detach /tmp/ghpages
-cd /tmp/ghpages
-git checkout --orphan gh-pages
-git rm -r --cached .
-cp -r /path/to/repo/out/. .
-touch .nojekyll
-git add -A && git commit -m "Publish site"
-git push origin gh-pages
-```
-
-`NEXT_PUBLIC_BASE_PATH` doit valoir `/Jotoliko` car le site est servi depuis un
-sous-chemin. Sur un domaine racine (Vercel, domaine personnalisé), laissez-le vide.
-
-Variables d'environnement utilisées au build :
-
-- `NEXT_PUBLIC_BASE_PATH` — préfixe de chemin
-- `NEXT_PUBLIC_SITE_URL` — URL canonique utilisée par les métadonnées, `sitemap.xml`
-  et `robots.txt`
+> Note : ce workflow ne peut pas être poussé par un jeton sans le scope `workflow`.
+> Si vous modifiez le fichier depuis un environnement automatisé, le jeton doit
+> inclure ce scope, sinon GitHub rejette le push.
 
 ## Structure
 
