@@ -12,6 +12,7 @@ export const site = {
 
 export const nav: { href: string; label: string }[] = [
   { href: "/fonctionnalites", label: "Fonctionnalités" },
+  { href: "/secteurs", label: "Secteurs" },
   { href: "/solutions", label: "Solutions" },
   { href: "/tarifs", label: "Tarifs" },
   { href: "/blog", label: "Blog" },
@@ -24,7 +25,9 @@ export const footerNav: { title: string; links: { href: string; label: string }[
     title: "Produit",
     links: [
       { href: "/fonctionnalites", label: "Fonctionnalités" },
-      { href: "/solutions", label: "Solutions" },
+      { href: "/secteurs", label: "Secteurs" },
+  { href: "/solutions", label: "Solutions" },
+      { href: "/communication", label: "Communication" },
       { href: "/tarifs", label: "Tarifs" },
       { href: "/demo", label: "Demander une démo" },
     ],
@@ -279,6 +282,33 @@ export const roadmap = [
   },
 ];
 
+// Comparaison avant / après.
+//
+// Ces lignes décrivent la façon dont le produit est conçu, pas des résultats
+// mesurés chez des clients. Aucun pourcentage de gain n'est affiché.
+export const avantApres = {
+  avant: {
+    titre: "Sans Jotoliko",
+    items: [
+      { titre: "Commandes dispersées", detail: "Téléphone, WhatsApp, cahier : rien n'est centralisé, donc rien n'est priorisé." },
+      { titre: "Erreurs de livraison", detail: "Adresse mal notée, mauvaise commande, remise non tracée." },
+      { titre: "Temps perdu en appels", detail: "Le bureau sert de standard pour chaque suivi client." },
+      { titre: "Écarts de caisse", detail: "L'argent encaissé et l'argent reversé ne se rejoignent pas." },
+      { titre: "Aucune visibilité", detail: "Ce qui s'est passé sur le terrain se reconstitue le soir, de mémoire." },
+    ],
+  },
+  apres: {
+    titre: "Avec Jotoliko",
+    items: [
+      { titre: "Une seule source de vérité", detail: "Commandes, clients, livreurs et statuts au même endroit." },
+      { titre: "Une preuve à chaque remise", detail: "Photo, nom du réceptionnaire et horodatage enregistrés." },
+      { titre: "Moins d'appels entrants", detail: "L'état d'une livraison se consulte sans appeler le livreur." },
+      { titre: "Une caisse rapprochée", detail: "Attendu, encaissé, remis et écart calculés par livreur." },
+      { titre: "Un pilotage au jour le jour", detail: "Le rapport journalier et la clôture donnent l'état réel de la journée." },
+    ],
+  },
+} as const;
+
 export const faqs = [
   {
     q: "Jotoliko est-il un service de livraison ?",
@@ -383,7 +413,7 @@ export const pricing = [
       "Preuve de livraison photo",
       "Rapport journalier",
     ],
-    cta: "Commencer gratuitement",
+    cta: "Demander un accès pilote",
     highlight: false,
   },
   {

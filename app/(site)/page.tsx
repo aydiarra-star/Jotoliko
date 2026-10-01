@@ -1,11 +1,13 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { ArrowRight, CloudOff, ShieldCheck, Sparkles, Wallet } from "lucide-react";
+import { ArrowRight, Check, CloudOff, ShieldCheck, Sparkles, Wallet } from "lucide-react";
 import { DashboardMockup } from "@/components/landing/dashboard-mockup";
 import { Reveal } from "@/components/ui/reveal";
 import { CTA, Section, SectionHeading } from "@/components/ui/section";
 import { Icon } from "@/components/ui/icon";
-import { engagements, features, markets, parcours, personas, problems, roadmap, scenarios } from "@/lib/content";
+import { avantApres, engagements, features, markets, parcours, personas, problems, roadmap, scenarios } from "@/lib/content";
+import { secteurs } from "@/lib/secteurs";
+import { CalculateurRoi } from "@/components/ui/calculateur-roi";
 
 export const metadata: Metadata = {
   title: "Jotoliko — Gérez. Livrez. Encaissez.",
@@ -50,7 +52,7 @@ export default function HomePage() {
                   Demander une démo <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link href="/tarifs" className="btn-ghost">
-                  Commencer gratuitement
+                  Voir les tarifs
                 </Link>
               </div>
             </Reveal>
@@ -237,6 +239,110 @@ export default function HomePage() {
               </Link>
             </Reveal>
           ))}
+        </div>
+      </Section>
+
+      {/* SECTEURS */}
+      <Section className="pt-0" id="metiers">
+        <SectionHeading
+          eyebrow="Jotoliko pour votre métier"
+          title="Choisissez votre métier, pas une démo générique."
+          body="Chaque secteur a ses contraintes. Les pages dédiées détaillent les problèmes que Jotoliko traite, les fonctions que vous utiliserez et trois moments de votre journée qu'il simplifie."
+        />
+        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {secteurs.map((s, i) => (
+            <Reveal key={s.slug} delay={(i % 3) * 0.06}>
+              <Link
+                href={`/secteurs/${s.slug}`}
+                className="card group flex h-full flex-col p-6 transition hover:-translate-y-1 hover:shadow-lift"
+              >
+                <span className="grid h-11 w-11 place-items-center rounded-xl bg-brand-soft text-brand">
+                  <Icon name={s.icon} className="h-5 w-5" />
+                </span>
+                <h3 className="mt-5 text-base font-semibold">{s.nomCourt}</h3>
+                <p className="mt-2 flex-1 text-sm leading-relaxed text-ink-500">{s.accroche}</p>
+                <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-brand">
+                  Voir ce métier
+                  <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
+                </span>
+              </Link>
+            </Reveal>
+          ))}
+          <Reveal delay={0.18}>
+            <Link
+              href="/secteurs"
+              className="card group flex h-full flex-col justify-center p-6 transition hover:-translate-y-1 hover:shadow-lift"
+            >
+              <h3 className="text-base font-semibold">Votre métier n&apos;est pas dans la liste ?</h3>
+              <p className="mt-2 text-sm leading-relaxed text-ink-500">
+                Si vos équipes se déplacent et encaissent sur le terrain, Jotoliko peut vous servir.
+              </p>
+              <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-brand">
+                Voir tous les secteurs
+                <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
+              </span>
+            </Link>
+          </Reveal>
+        </div>
+      </Section>
+
+      {/* AVANT / APRÈS */}
+      <Section className="pt-0">
+        <SectionHeading
+          eyebrow="Pourquoi Jotoliko ?"
+          title="Ce qui change dans une journée ordinaire."
+          body="Deux colonnes, les mêmes heures de travail. À gauche ce que le terrain subit aujourd'hui, à droite ce que la plateforme met à votre disposition."
+        />
+        <div className="mt-12 grid gap-4 lg:grid-cols-2">
+          <Reveal>
+            <div className="card h-full p-7">
+              <h3 className="text-lg font-semibold text-ink-500">{avantApres.avant.titre}</h3>
+              <ul className="mt-6 space-y-5">
+                {avantApres.avant.items.map((x) => (
+                  <li key={x.titre} className="flex gap-3">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" />
+                    <span>
+                      <span className="text-sm font-semibold text-ink">{x.titre}</span>
+                      <span className="mt-0.5 block text-sm leading-relaxed text-ink-500">{x.detail}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </Reveal>
+          <Reveal delay={0.08}>
+            <div className="card h-full border-brand/20 bg-brand-soft/40 p-7">
+              <h3 className="text-lg font-semibold text-brand">{avantApres.apres.titre}</h3>
+              <ul className="mt-6 space-y-5">
+                {avantApres.apres.items.map((x) => (
+                  <li key={x.titre} className="flex gap-3">
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" strokeWidth={3} />
+                    <span>
+                      <span className="text-sm font-semibold text-ink">{x.titre}</span>
+                      <span className="mt-0.5 block text-sm leading-relaxed text-ink-500">{x.detail}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </Reveal>
+        </div>
+        <p className="mt-4 text-xs leading-relaxed text-ink-500">
+          Ces deux colonnes décrivent la conception du produit, pas des résultats mesurés chez des
+          clients. Aucun pourcentage de gain n&apos;est affiché : nous ne publierons des chiffres
+          qu&apos;après les avoir relevés sur des opérations réelles.
+        </p>
+      </Section>
+
+      {/* CALCULATEUR ROI */}
+      <Section className="pt-0" id="roi">
+        <SectionHeading
+          eyebrow="Calculateur"
+          title="Chiffrez votre situation, avec vos chiffres."
+          body="Renseignez vos volumes et vos encaissements. Le calculateur décrit ce que cela représente sur l'année et le poids de vos écarts de caisse. Aucune moyenne de marché, aucune projection inventée."
+        />
+        <div className="mt-12">
+          <CalculateurRoi />
         </div>
       </Section>
 

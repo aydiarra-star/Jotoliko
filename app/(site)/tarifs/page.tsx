@@ -88,9 +88,9 @@ export default function PricingPage() {
       </Section>
 
       <CTA
-        title="Commencez gratuitement, passez à l'échelle ensuite."
-        body="Créez votre espace en quelques minutes. Notre équipe vous aide à importer vos clients et vos premières commandes."
-        primary={{ href: "/contact", label: "Créer mon espace" }}
+        title="Démarrez accompagné, montez en puissance ensuite."
+        body="Nous configurons votre espace avec vos clients et vos premières commandes, puis nous formons votre équipe. Les entreprises pilotes bénéficient d'un accompagnement renforcé."
+        primary={{ href: "/contact", label: "Demander un accès pilote" }}
         secondary={{ href: "/demo", label: "Demander une démo" }}
       />
     </>

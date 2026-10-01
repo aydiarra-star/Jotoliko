@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { features } from "@/lib/content";
 import { posts } from "@/lib/posts";
+import { secteurs } from "@/lib/secteurs";
 
 export const dynamic = "force-static";
 
@@ -12,6 +13,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const staticRoutes = [
     "",
     "/fonctionnalites",
+    "/secteurs",
     "/solutions",
     "/tarifs",
     "/blog",
@@ -19,6 +21,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/contact",
     "/faq",
     "/demo",
+    "/communication",
   ].map((path) => ({
     url: `${baseUrl}${path}`,
     lastModified: now,
@@ -33,6 +36,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.7,
   }));
 
+  const secteurRoutes = secteurs.map((s) => ({
+    url: `${baseUrl}/secteurs/${s.slug}`,
+    lastModified: now,
+    changeFrequency: "monthly" as const,
+    priority: 0.8,
+  }));
+
   const postRoutes = posts.map((p) => ({
     url: `${baseUrl}/blog/${p.slug}`,
     lastModified: new Date(`${p.date}T00:00:00Z`),
@@ -40,5 +50,5 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.6,
   }));
 
-  return [...staticRoutes, ...featureRoutes, ...postRoutes];
+  return [...staticRoutes, ...secteurRoutes, ...featureRoutes, ...postRoutes];
 }
