@@ -1,0 +1,5 @@
+User-Agent: *
+Allow: /
+
+Host: https://aydiarra-star.github.io/Jotoliko
+Sitemap: https://aydiarra-star.github.io/Jotoliko/sitemap.xml
