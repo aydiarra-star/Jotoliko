@@ -52,6 +52,11 @@ Vérifier ensuite que l'écart de contenu se limite au fichier de workflow :
 git diff --stat feat/marketing-site publish-site
 ```
 
+Piège vérifié le 2026-10-01 : `git push --dry-run` **ne détecte pas** le rejet lié
+au scope `workflow`. Le dry-run annonce le push comme accepté, puis le push réel
+est rejeté. Ne pas conclure qu'un jeton dispose du scope `workflow` sur la seule
+foi d'un dry-run : tenter le push réel.
+
 ### Déploiement
 
 - GitHub Pages sert la branche **`gh-pages`** (source configurée sur le dépôt).
