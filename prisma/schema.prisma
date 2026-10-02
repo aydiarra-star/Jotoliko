@@ -1,0 +1,566 @@
+// Jotoliko — modèle de données MVP
+//
+// Principes structurants :
+//  1. Multi-tenant : toute donnée métier porte un companyId. Aucune requête ne
+//     doit traverser les entreprises.
+//  2. Offline-first : les entités créées sur le terrain (livraisons, encaissements,
+//     preuves) portent un identifiant généré côté client (clientId) et des
+//     métadonnées de synchronisation.
+//  3. Cash : le livreur encaisse, puis reverse. La remise de caisse (Settlement)
+//     est une entité de premier plan, pas un champ dérivé.
+//  4. Traçabilité : les changements de statut de commande sont historisés.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identité & tenants
+// ---------------------------------------------------------------------------
+
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  country   String   @default("SN")
+  currency  String   @default("XOF")
+  timezone  String   @default("Africa/Dakar")
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships   Membership[]
+  drivers       Driver[]
+  vehicles      Vehicle[]
+  customers     Customer[]
+  zones         Zone[]
+  orders        Order[]
+  deliveries    Delivery[]
+  payments      Payment[]
+  settlements   Settlement[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+  settings      Setting?
+
+  @@map("companies")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  phone        String?
+  passwordHash String
+  firstName    String
+  lastName     String
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  memberships   Membership[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+  driverProfile Driver?
+
+  @@map("users")
+}
+
+model Membership {
+  id        String   @id @default(uuid())
+  userId    String
+  companyId String
+  roleId    String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  role    Role    @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+  @@map("memberships")
+}
+
+model Role {
+  id          String  @id @default(uuid())
+  code        String  @unique // OWNER, MANAGER, DISPATCHER, ACCOUNTANT, DRIVER
+  label       String
+  description String?
+
+  permissions RolePermission[]
+  memberships Membership[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id    String @id @default(uuid())
+  code  String @unique // orders:create, settlements:validate, reports:read ...
+  label String
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ---------------------------------------------------------------------------
+// Référentiels terrain
+// ---------------------------------------------------------------------------
+
+model Zone {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String
+  city      String?
+  // Contour approximatif ; les repères libres restent la source de vérité terrain.
+  centerLat Float?
+  centerLng Float?
+  createdAt DateTime @default(now())
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customers Customer[]
+  orders    Order[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("zones")
+}
+
+model Vehicle {
+  id        String   @id @default(uuid())
+  companyId String
+  plate     String?
+  label     String // "Moto Yamaha 125", "Camionnette"
+  type      String   @default("MOTORCYCLE") // MOTORCYCLE, CAR, VAN, TRUCK, BICYCLE
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  company Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  drivers Driver[]
+
+  @@index([companyId])
+  @@map("vehicles")
+}
+
+model Driver {
+  id        String    @id @default(uuid())
+  companyId String
+  userId    String?   @unique // accès à l'application livreur
+  vehicleId String?
+  code      String // matricule interne affiché sur les bordereaux
+  firstName String
+  lastName  String
+  phone     String
+  isActive  Boolean   @default(true)
+  hiredAt   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user        User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  vehicle     Vehicle?         @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  deliveries  Delivery[]
+  settlements Settlement[]
+  positions   DriverPosition[]
+
+  @@unique([companyId, code])
+  @@index([companyId, isActive])
+  @@map("drivers")
+}
+
+model DriverPosition {
+  id         String   @id @default(uuid())
+  driverId   String
+  lat        Float
+  lng        Float
+  accuracy   Float?
+  battery    Int?
+  recordedAt DateTime
+  createdAt  DateTime @default(now())
+
+  driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId, recordedAt])
+  @@map("driver_positions")
+}
+
+model Customer {
+  id          String   @id @default(uuid())
+  companyId   String
+  name        String
+  phone       String
+  email       String?
+  // Adressage réel : point GPS + repère libre + zone. Les trois coexistent.
+  addressLine String?
+  landmark    String? // "derrière la pharmacie Mermoz, immeuble bleu"
+  zoneId      String?
+  lat         Float?
+  lng         Float?
+  notes       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  zone    Zone?   @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  orders  Order[]
+
+  @@index([companyId, phone])
+  @@map("customers")
+}
+
+// ---------------------------------------------------------------------------
+// Commandes
+// ---------------------------------------------------------------------------
+
+model Order {
+  id         String      @id @default(uuid())
+  companyId  String
+  customerId String
+  zoneId     String?
+  reference  String // CMD-2418
+  status     OrderStatus @default(DRAFT)
+
+  // Montants en unité monétaire entière (FCFA : pas de centimes).
+  subtotal    Int @default(0)
+  deliveryFee Int @default(0)
+  discount    Int @default(0)
+  total       Int @default(0)
+  amountDue   Int @default(0) // ce que le livreur doit collecter
+
+  paymentMethod PaymentMethod @default(CASH_ON_DELIVERY)
+  isPaid        Boolean       @default(false)
+  paidAt        DateTime?
+
+  scheduledFor DateTime?
+  notes        String?
+  cancelReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company       Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer      Customer             @relation(fields: [customerId], references: [id])
+  zone          Zone?                @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  items         OrderItem[]
+  delivery      Delivery?
+  payments      Payment[]
+  statusHistory OrderStatusHistory[]
+
+  @@unique([companyId, reference])
+  @@index([companyId, status])
+  @@index([companyId, createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  productId String?
+  label     String // libellé libre : beaucoup de clients n'ont pas de catalogue
+  quantity  Int     @default(1)
+  unitPrice Int     @default(0)
+  lineTotal Int     @default(0)
+  notes     String?
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model Product {
+  id        String   @id @default(uuid())
+  companyId String
+  sku       String?
+  name      String
+  unitPrice Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  items OrderItem[]
+
+  @@index([companyId])
+  @@map("products")
+}
+
+model OrderStatusHistory {
+  id              String       @id @default(uuid())
+  orderId         String
+  fromStatus      OrderStatus?
+  toStatus        OrderStatus
+  changedByUserId String?
+  reason          String?
+  createdAt       DateTime     @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@map("order_status_history")
+}
+
+enum OrderStatus {
+  DRAFT
+  CONFIRMED
+  ASSIGNED
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERED
+  FAILED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH_ON_DELIVERY
+  CASH_UPFRONT
+  WAVE
+  ORANGE_MONEY
+  FREE_MONEY
+  BANK_TRANSFER
+  CREDIT
+}
+
+// ---------------------------------------------------------------------------
+// Livraison & preuve
+// ---------------------------------------------------------------------------
+
+model Delivery {
+  id        String  @id @default(uuid())
+  companyId String
+  orderId   String  @unique
+  driverId  String?
+  // Identifiant généré sur le téléphone : permet de créer la livraison hors ligne.
+  clientId  String? @unique
+
+  status   DeliveryStatus @default(PENDING)
+  sequence Int? // position dans la tournée
+
+  assignedAt    DateTime?
+  pickedUpAt    DateTime?
+  deliveredAt   DateTime?
+  failedAt      DateTime?
+  failureReason String?
+
+  // Métadonnées de synchronisation offline-first.
+  recordedAt DateTime? // horodatage terrain (heure du téléphone)
+  syncedAt   DateTime? // heure d'arrivée serveur
+  deviceId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  driver  Driver?  @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  proofs  Proof[]
+  payment Payment?
+
+  @@index([companyId, status])
+  @@index([driverId, status])
+  @@map("deliveries")
+}
+
+enum DeliveryStatus {
+  PENDING
+  ASSIGNED
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERED
+  FAILED
+  CANCELLED
+}
+
+model Proof {
+  id            String    @id @default(uuid())
+  deliveryId    String
+  type          ProofType @default(PHOTO)
+  fileUrl       String?
+  // Preuve de réception : qui a pris livraison.
+  recipientName String?
+  signatureUrl  String?
+  note          String?
+  lat           Float?
+  lng           Float?
+  clientId      String?   @unique
+  recordedAt    DateTime
+  syncedAt      DateTime?
+  createdAt     DateTime  @default(now())
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryId])
+  @@map("proofs")
+}
+
+enum ProofType {
+  PHOTO
+  SIGNATURE
+  RECIPIENT_NAME
+  NOTE
+}
+
+// ---------------------------------------------------------------------------
+// Encaissements & caisse
+// ---------------------------------------------------------------------------
+
+model Payment {
+  id         String  @id @default(uuid())
+  companyId  String
+  orderId    String
+  deliveryId String? @unique
+  driverId   String?
+
+  amount Int
+  method PaymentMethod @default(CASH_ON_DELIVERY)
+  status PaymentStatus @default(PENDING)
+
+  // Référence opérateur mobile money (Wave, OM, Free Money).
+  externalRef String?
+  clientId    String?   @unique
+  collectedAt DateTime?
+  recordedAt  DateTime?
+  syncedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  order        Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  delivery     Delivery?   @relation(fields: [deliveryId], references: [id], onDelete: SetNull)
+  settlement   Settlement? @relation(fields: [settlementId], references: [id], onDelete: SetNull)
+  settlementId String?
+
+  @@index([companyId, status])
+  @@index([driverId])
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  PENDING
+  COLLECTED
+  SETTLED
+  DISPUTED
+  CANCELLED
+}
+
+// Remise de caisse : ce que le livreur a collecté, ce qu'il reverse, l'écart.
+model Settlement {
+  id        String @id @default(uuid())
+  companyId String
+  driverId  String
+  reference String
+
+  periodStart DateTime
+  periodEnd   DateTime
+
+  expectedAmount Int // calculé depuis les paiements COLLECTED du livreur
+  declaredAmount Int // déclaré par le livreur
+  receivedAmount Int? // compté par l'entreprise
+  variance       Int  @default(0) // receivedAmount - expectedAmount
+
+  status            SettlementStatus @default(OPEN)
+  note              String?
+  validatedByUserId String?
+  closedAt          DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  driver   Driver    @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  payments Payment[]
+
+  @@unique([companyId, reference])
+  @@index([companyId, status])
+  @@index([driverId, status])
+  @@map("settlements")
+}
+
+enum SettlementStatus {
+  OPEN
+  SUBMITTED
+  VALIDATED
+  DISPUTED
+  CLOSED
+}
+
+// ---------------------------------------------------------------------------
+// Transverse
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  companyId  String?
+  userId     String?
+  action     String // orders.cancel, settlements.validate ...
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id        String              @id @default(uuid())
+  companyId String
+  userId    String?
+  channel   NotificationChannel @default(IN_APP)
+  title     String
+  body      String
+  payload   Json?
+  readAt    DateTime?
+  sentAt    DateTime?
+  createdAt DateTime            @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, userId, readAt])
+  @@map("notifications")
+}
+
+enum NotificationChannel {
+  IN_APP
+  WHATSAPP
+  SMS
+  EMAIL
+}
+
+model Setting {
+  id                    String   @id @default(uuid())
+  companyId             String   @unique
+  // Seuils et politiques : tolérance d'écart de caisse, délai de conservation, etc.
+  cashVarianceTolerance Int      @default(500)
+  proofRequired         Boolean  @default(true)
+  defaultDeliveryFee    Int      @default(0)
+  data                  Json?
+  updatedAt             DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("settings")
+}
