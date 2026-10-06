@@ -11,6 +11,7 @@ export const site = {
 } as const;
 
 export const nav: { href: string; label: string }[] = [
+  { href: "/operations", label: "Centre opérationnel" },
   { href: "/fonctionnalites", label: "Fonctionnalités" },
   { href: "/solutions", label: "Solutions" },
   { href: "/tarifs", label: "Tarifs" },
