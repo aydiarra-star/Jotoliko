@@ -2,10 +2,10 @@
 
 Public :
 - GET /health
-- POST /auth/login
+- POST /auth/login (companyId + email + password)
 
 Authentifié :
-- GET /missions
+- GET /missions (company-scoped)
 - GET /missions/:id
 - POST /missions/:id/transition
 - POST /missions/:id/payment + Idempotency-Key
