@@ -54,10 +54,10 @@ export const markets = [
 // Aucun chiffre d'amélioration n'est affiché tant qu'il n'a pas été relevé chez
 // un client réel.
 export const engagements = [
-  { value: "100 %", label: "des encaissements rattachés à une livraison et à un livreur" },
-  { value: "0", label: "double saisie : la caisse se calcule depuis les livraisons" },
-  { value: "Hors ligne", label: "le livreur continue de travailler sans réseau" },
-  { value: "1 journée", label: "objectif de prise en main pour une équipe terrain" },
+  { value: "Traçable", label: "les encaissements sont conçus pour être rattachés à une opération" },
+  { value: "1 chaîne", label: "commande → mission → preuve → encaissement → remise" },
+  { value: "Résilient", label: "architecture pensée pour le réseau intermittent" },
+  { value: "Mobile-first", label: "interface livreur pensée pour le terrain" },
 ];
 
 // Enchaînement des étapes, de la commande au rapport.
@@ -66,12 +66,12 @@ export const parcours = [
   { etape: "Commande reçue", detail: "Saisie au bureau ou transmise par WhatsApp." },
   { etape: "Commande affectée", detail: "Attribuée à un livreur disponible." },
   { etape: "Livreur en route", detail: "Le livreur ouvre sa mission et démarre." },
-  { etape: "Suivi", detail: "Position et avancement visibles au bureau." },
+  { etape: "Suivi", detail: "Avancement et position uniquement lorsqu’une donnée réelle est disponible." },
   { etape: "Arrivée chez le client", detail: "Le livreur déclare son arrivée." },
-  { etape: "Preuve de livraison", detail: "Photo, réceptionnaire, horodatage." },
+  { etape: "Preuve de livraison", detail: "Preuve selon les capacités réellement activées et les règles de l’opération." },
   { etape: "Encaissement", detail: "Montant reçu et mode de paiement enregistrés." },
-  { etape: "Caisse", detail: "Montant à remettre et écart calculés par livreur." },
-  { etape: "Rapport", detail: "Journée consolidée, exportable." },
+  { etape: "Caisse", detail: "Le modèle sépare attendu, encaissé, remis et écart." },
+  { etape: "Rapport", detail: "Journée consolidée lorsque les données serveur sont disponibles." },
 ];
 
 export const problems = [
