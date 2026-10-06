@@ -25,6 +25,10 @@ export class MissionsService {
 
   async transition(auth: AuthContext, id: string, target?: string, proofId?: string) {
     if (!target || !statusMap[target]) throw new BadRequestException("Statut invalide");
+    if (!idempotencyKey || idempotencyKey.length < 8) throw new BadRequestException("Idempotency-Key requis (>= 8 caractères)");
+    const existing = await this.prisma.mutationKey.findUnique({ where: { idempotencyKey } });
+    if (existing && existing.companyId === auth.companyId && existing.operation === `PAYMENT:${id}`) return JSON.parse(existing.resultJson);
+    if (existing) throw new BadRequestException("Idempotency-Key déjà utilisé");
     const mission = await this.get(auth.companyId, id);
     const from = statusMap[mission.status];
     const to = statusMap[target];
@@ -42,7 +46,7 @@ export class MissionsService {
     return updated;
   }
 
-  async collect(auth: AuthContext, id: string, collected?: number) {
+  async collect(auth: AuthContext, id: string, collected?: number, idempotencyKey?: string) {
     if (typeof collected !== "number" || !Number.isFinite(collected) || collected < 0) throw new BadRequestException("Montant invalide");
     const mission = await this.get(auth.companyId, id);
     try {
@@ -53,7 +57,11 @@ export class MissionsService {
         gpsTruth: mission.gpsTruth, syncStatus: "SYNCHRONISE",
       });
     } catch (e) { throw new BadRequestException((e as Error).message); }
-    const updated = await this.prisma.mission.update({ where: { id: mission.id }, data: { collectedAmount: { increment: collected } } });
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const current = await tx.mission.update({ where: { id: mission.id }, data: { collectedAmount: { increment: collected } } });
+      await tx.mutationKey.create({ data: { idempotencyKey, companyId: auth.companyId, operation: `PAYMENT:${id}`, resultJson: JSON.stringify(current) } });
+      return current;
+    });
     await this.audit(auth, "PAYMENT_COLLECTED", mission.id, String(mission.collectedAmount), String(updated.collectedAmount));
     return updated;
   }
