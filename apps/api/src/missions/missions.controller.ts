@@ -28,6 +28,12 @@ export class MissionsController {
     return this.missions.collect(req.auth!, id, body.collected, headers["idempotency-key"]);
   }
 
+  @Post(":id/remittance")
+  @Roles("OWNER", "ADMIN", "MANAGER")
+  remittance(@Req() req: AuthenticatedRequest, @Param("id") id: string, @Body() body: { amount?: number }, @Headers() headers: Record<string,string>) {
+    return this.missions.remit(req.auth!, id, body.amount, headers["idempotency-key"]);
+  }
+
   @Post(":id/gps")
   @Roles("OWNER", "ADMIN", "MANAGER", "DRIVER")
   gps(@Req() req: AuthenticatedRequest, @Param("id") id: string, @Body() body: { latitude?: number; longitude?: number; recordedAt?: string }) {
