@@ -95,7 +95,7 @@ export default function OperationsPage() {
                 <div key={title as string} className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70">
                   <div className="flex items-center justify-between">
                     <Icon className="h-5 w-5 text-emerald-600" />
-                    <span className="text-2xl font-bold">{value}</span>
+                    <span className="text-2xl font-bold">{typeof value === "string" || typeof value === "number" ? value : "—"}</span>
                   </div>
                   <p className="mt-4 font-semibold">{title}</p>
                   <p className="mt-1 text-xs text-slate-500">{note}</p>
