@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { MissionStatus, TruthStatus } from "@prisma/client";
-import { assertDeliveryClosable, assertPaymentAllowed, assertTransition, gpsTruthFromAge } from "../../../lib/jotoliko-os/core";
+import { assertDeliveryClosable, assertPaymentAllowed, assertTransition, gpsTruthFromAge } from "../../../../lib/jotoliko-os/core";
 import { PrismaService } from "../prisma.service";
 import { AuthContext } from "../auth/auth.types";
 
