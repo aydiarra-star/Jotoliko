@@ -92,3 +92,12 @@ model AuditEvent {
   @@index([companyId, objectType, objectId])
   @@index([companyId, createdAt])
 }
+
+model MutationKey {
+  idempotencyKey String @id
+  companyId String
+  operation String
+  resultJson String
+  createdAt DateTime @default(now())
+  @@index([companyId, createdAt])
+}
