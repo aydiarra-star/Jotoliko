@@ -41,7 +41,7 @@ model User {
   company   Company  @relation(fields: [companyId], references: [id])
   email     String
   name      String
-  role      String
+  role      String\n  passwordHash String?\n  passwordSalt String?
   createdAt DateTime @default(now())
 
   @@unique([companyId, email])
@@ -65,7 +65,7 @@ model Mission {
   latitude      Float?
   longitude     Float?
   gpsTruth      TruthStatus   @default(INDISPONIBLE)
-  gpsAt         DateTime?
+  gpsAt         DateTime?\n  proofId       String?\n  assignedUserId String?\n  @@index([companyId, assignedUserId])
   expectedAmount Int           @default(0)
   collectedAmount Int         @default(0)
   remittedAmount Int           @default(0)
