@@ -11,10 +11,10 @@ function hashPassword(password: string, salt: string) {
 export class AuthService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async login(email: string, password: string) {
+  async login(companyId: string, email: string, password: string) {
     const secret = process.env.AUTH_SECRET;
     if (!secret) throw new Error("AUTH_SECRET manquant");
-    const users = await this.prisma.user.findMany({ where: { email }, take: 20 });
+    const users = await this.prisma.user.findMany({ where: { companyId, email }, take: 1 });
     for (const user of users) {
       if (!user.passwordHash || !user.passwordSalt) continue;
       const actual = hashPassword(password, user.passwordSalt);
