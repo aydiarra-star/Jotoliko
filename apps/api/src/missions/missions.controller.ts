@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "../auth/auth.guard";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
@@ -24,8 +24,8 @@ export class MissionsController {
 
   @Post(":id/payment")
   @Roles("OWNER", "ADMIN", "MANAGER", "DRIVER")
-  payment(@Req() req: AuthenticatedRequest, @Param("id") id: string, @Body() body: { collected?: number }) {
-    return this.missions.collect(req.auth!, id, body.collected);
+  payment(@Req() req: AuthenticatedRequest, @Param("id") id: string, @Body() body: { collected?: number }, @Headers() headers: Record<string,string>) {
+    return this.missions.collect(req.auth!, id, body.collected, headers["idempotency-key"]);
   }
 
   @Post(":id/gps")
