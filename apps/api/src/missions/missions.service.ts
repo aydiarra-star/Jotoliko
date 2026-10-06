@@ -25,10 +25,6 @@ export class MissionsService {
 
   async transition(auth: AuthContext, id: string, target?: string, proofId?: string) {
     if (!target || !statusMap[target]) throw new BadRequestException("Statut invalide");
-    if (!idempotencyKey || idempotencyKey.length < 8) throw new BadRequestException("Idempotency-Key requis (>= 8 caractères)");
-    const existing = await this.prisma.mutationKey.findUnique({ where: { idempotencyKey } });
-    if (existing && existing.companyId === auth.companyId && existing.operation === `PAYMENT:${id}`) return JSON.parse(existing.resultJson);
-    if (existing) throw new BadRequestException("Idempotency-Key déjà utilisé");
     const mission = await this.get(auth.companyId, id);
     const from = statusMap[mission.status];
     const to = statusMap[target];
@@ -48,6 +44,10 @@ export class MissionsService {
 
   async collect(auth: AuthContext, id: string, collected?: number, idempotencyKey?: string) {
     if (typeof collected !== "number" || !Number.isFinite(collected) || collected < 0) throw new BadRequestException("Montant invalide");
+    if (!idempotencyKey || idempotencyKey.length < 8) throw new BadRequestException("Idempotency-Key requis (>= 8 caractères)");
+    const existing = await this.prisma.mutationKey.findUnique({ where: { idempotencyKey } });
+    if (existing && existing.companyId === auth.companyId && existing.operation === `PAYMENT:${id}`) return JSON.parse(existing.resultJson);
+    if (existing) throw new BadRequestException("Idempotency-Key déjà utilisé");
     const mission = await this.get(auth.companyId, id);
     try {
       assertPaymentAllowed({
