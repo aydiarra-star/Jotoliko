@@ -66,6 +66,24 @@ export class MissionsService {
     return updated;
   }
 
+  async remit(auth: AuthContext, id: string, amount?: number, idempotencyKey?: string) {
+    if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) throw new BadRequestException("Montant de remise invalide");
+    if (!idempotencyKey || idempotencyKey.length < 8) throw new BadRequestException("Idempotency-Key requis (>= 8 caractères)");
+    const existing = await this.prisma.mutationKey.findUnique({ where: { idempotencyKey } });
+    if (existing && existing.companyId === auth.companyId && existing.operation === `REMITTANCE:${id}`) return JSON.parse(existing.resultJson);
+    if (existing) throw new BadRequestException("Idempotency-Key déjà utilisé");
+    const mission = await this.get(auth.companyId, id);
+    const available = mission.collectedAmount - mission.remittedAmount;
+    if (amount > available) throw new BadRequestException("Remise supérieure au montant encaissé disponible");
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const current = await tx.mission.update({ where: { id: mission.id }, data: { remittedAmount: { increment: amount } } });
+      await tx.mutationKey.create({ data: { idempotencyKey, companyId: auth.companyId, operation: `REMITTANCE:${id}`, resultJson: JSON.stringify(current) } });
+      return current;
+    });
+    await this.audit(auth, "REMITTANCE_RECORDED", mission.id, String(mission.remittedAmount), String(updated.remittedAmount));
+    return updated;
+  }
+
   async gps(auth: AuthContext, id: string, input: { latitude?: number; longitude?: number; recordedAt?: string }) {
     if (typeof input.latitude !== "number" || typeof input.longitude !== "number" || Math.abs(input.latitude) > 90 || Math.abs(input.longitude) > 180) throw new BadRequestException("Coordonnées invalides");
     const at = input.recordedAt ? new Date(input.recordedAt) : new Date();
