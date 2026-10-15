@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Headers, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { AuthGuard } from "../auth/auth.guard";
+import { BillingAccessGuard } from "../billing/billing-access.guard";
 import { RequirePermission, RolesGuard } from "../auth/roles.guard";
 import type { AuthenticatedRequest } from "../auth/auth.types";
 import { MissionsService } from "./missions.service";
@@ -18,7 +19,7 @@ import { TransitionDto } from "./dto/transition.dto";
  * Aucun contrôle d'accès n'est laissé à l'interface.
  */
 @Controller("missions")
-@UseGuards(AuthGuard, RolesGuard)
+@UseGuards(AuthGuard, BillingAccessGuard, RolesGuard)
 export class MissionsController {
   constructor(private readonly missions: MissionsService) {}
 
