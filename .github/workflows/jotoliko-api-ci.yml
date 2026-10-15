@@ -215,12 +215,12 @@ jobs:
             --reporter=default --reporter=json --outputFile=e2e-report.json > e2e.log 2>&1
           code=$?
           set -e
-          if [ "$code" -ne 0 ]; then
-            # Les échecs sont republiés en annotations : elles restent lisibles
-            # via l'API des check-runs même quand les journaux du runner ne sont
-            # pas téléchargeables depuis l'environnement appelant.
-            node scripts/emit-vitest-annotations.mjs e2e-report.json e2e.log
-          fi
+          # Appelé dans tous les cas : en cas d'échec, les cas fautifs sont
+          # republiés en annotations ; en cas de succès, un bilan publie le
+          # nombre de cas réellement exécutés (y compris les ignorés). Les
+          # annotations restent lisibles via l'API des check-runs même quand les
+          # journaux du runner ne sont pas téléchargeables.
+          node scripts/emit-vitest-annotations.mjs e2e-report.json e2e.log || true
           exit "$code"
 
       - name: Publier le journal des tests
