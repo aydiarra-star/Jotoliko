@@ -70,4 +70,4 @@ Les noms et champs ci-dessous sont une cible d'implémentation ; ils ne doivent 
 
 ## Statut
 
-Audit de l'historique effectué et migration SQL additive ajoutée à la PR. Le schéma et la migration ne sont pas encore validés par Prisma/CI ni appliqués à une base. Aucun tarif, compte marchand, paiement, déploiement ou merge n'a été créé. L'inscription autonome et la facturation ne sont pas encore fonctionnelles.
+Audit de l'historique effectué et migration SQL additive ajoutée à la PR. Le schéma Prisma a été validé avec succès dans GitHub Actions et les tests du domaine passent. La migration SQL n'a pas encore été exécutée sur une base jetable ni appliquée à un environnement. Aucun tarif, compte marchand, paiement, déploiement ou merge n'a été créé. L'inscription autonome et la facturation ne sont pas encore fonctionnelles.
