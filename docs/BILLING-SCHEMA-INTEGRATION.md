@@ -27,7 +27,7 @@ Le fichier `migration_lock.toml` confirme PostgreSQL. La migration d'abonnement 
 
 ## Modèles et migration ajoutés dans cette PR
 
-Le schéma canonique et une migration SQL additive proposent désormais les modèles ci-dessous. Ils ne sont pas encore déployés dans une base et doivent passer la validation Prisma et une revue SQL avant toute application.
+Le schéma canonique et une migration SQL additive proposent désormais les modèles ci-dessous. La validation Prisma et l'exécution de l'historique complet des migrations ont réussi sur une base PostgreSQL 16 jetable en CI. Aucune base partagée ou de production n'a été modifiée ; une revue et une autorisation restent nécessaires avant toute application sur un environnement réel.
 
 
 
@@ -75,10 +75,10 @@ Le module NestJS `BillingModule` est maintenant enregistré dans `AppModule` et 
 - `GET /billing/pricing` : liste uniquement les tarifs explicitement actifs et dans leur période d'effet. Si aucun tarif n'est configuré, la réponse indique `configured: false` et `PRICE_NOT_CONFIGURED` ; aucun prix d'exemple n'est inventé.
 - `GET /billing/subscription` : nécessite un jeton valide et lit l'abonnement de l'entreprise issue du contexte authentifié, jamais un `companyId` fourni par le client. Les références et secrets du fournisseur de paiement ne sont pas exposés.
 
-Cette étape est volontairement **en lecture seule**. Elle ne crée pas de compte, ne déclenche pas de paiement, ne confirme pas un webhook et ne bloque pas encore les routes opérationnelles selon l'abonnement. Le champ `paidAccessExpected` est un résumé d'état, pas un garde d'accès. L'inscription autonome ne doit être activée qu'après implémentation et tests des transactions d'activation, de l'idempotence des notifications fournisseur et des limites de sièges côté API.
+Cette étape est volontairement **en lecture seule**. Elle ne crée pas de compte, ne déclenche pas de paiement, ne confirme pas un webhook et ne bloque pas encore les routes opérationnelles selon l'abonnement. Le champ `paidAccessExpected` est un résumé d'état, pas un garde d'accès. Un `BillingAccessGuard` est désormais branché aux routes Missions et Preuves. Il reste désactivé par défaut pour préserver les clients existants ; l'activation nécessite `JOTOLIKO_BILLING_ENFORCEMENT_ENABLED=true`. Une fois activé, l'API refuse les opérations couvertes si l'entreprise n'a pas d'abonnement valide `ACTIVE` dont la période payée n'est pas échue, ou `GRACE_PERIOD` dont la grâce n'est pas échue. Le garde n'est pas encore appliqué à d'autres modules/routes. L'inscription autonome ne doit être activée qu'après implémentation et tests des transactions d'activation, de l'idempotence des notifications fournisseur et des limites de sièges côté API.
 
-La CI a maintenant trois contrôles distincts : tests du domaine de facturation, migration complète sur PostgreSQL 16 jetable, puis génération Prisma Client + typecheck + build NestJS.
+La CI comprend les tests du domaine, la migration complète sur PostgreSQL 16 jetable, la génération Prisma Client, le typecheck et le build NestJS. Les contrôles sont relancés sur les changements du garde d'abonnement et des contrôleurs Missions/Preuves.
 
 ## Statut
 
-Audit de l'historique effectué et migration SQL additive ajoutée à la PR. Le schéma Prisma a été validé avec succès dans GitHub Actions et les tests du domaine passent. La migration SQL n'a pas encore été exécutée sur une base jetable ni appliquée à un environnement. Aucun tarif, compte marchand, paiement, déploiement ou merge n'a été créé. L'inscription autonome et la facturation ne sont pas encore fonctionnelles.
+Audit de l'historique effectué ; migration SQL additive testée avec succès sur PostgreSQL 16 jetable dans GitHub Actions ; validation Prisma, tests métier, typecheck et build NestJS réussis sur le commit de correction précédent. Le garde d'accès payant vient d'être intégré derrière un indicateur d'activation explicite ; les contrôles CI de cette nouvelle intégration sont en cours. Aucune base partagée n'a été modifiée. Aucun tarif, compte marchand, paiement réel, déploiement ou merge n'a été créé. L'inscription autonome et la facturation ne sont pas encore fonctionnelles.
