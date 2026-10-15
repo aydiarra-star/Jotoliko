@@ -1,0 +1,33 @@
+name: Jotoliko deployment config validation
+
+on:
+  pull_request:
+    paths:
+      - "deploy/production/**"
+      - ".dockerignore"
+      - ".github/workflows/deployment-config.yml"
+      - "apps/api/**"
+      - "prisma/**"
+      - "package.json"
+      - "package-lock.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-deployment:
+    name: Compose validation and API image build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Compose without printing environment values
+        run: docker compose --env-file deploy/production/.env.production.example -f deploy/production/compose.yaml config --quiet
+
+      - name: Build production API image
+        run: docker build --target runtime --file deploy/production/Dockerfile --tag jotoliko-api:ci .
+
+      - name: Build explicit migration image
+        run: docker build --target migrate --file deploy/production/Dockerfile --tag jotoliko-migrate:ci .
