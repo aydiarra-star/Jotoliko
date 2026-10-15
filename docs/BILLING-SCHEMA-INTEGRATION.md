@@ -68,6 +68,17 @@ Les noms et champs ci-dessous sont une cible d'implémentation ; ils ne doivent 
 6. Ajouter la vérification fournisseur côté serveur, l'idempotence des callbacks, le rapprochement montant/devise/référence, puis les tests d'échec, de doublon et de callbacks désordonnés.
 7. Brancher les gardes d'accès sur l'état d'abonnement sans supprimer les données à l'expiration. Tester l'isolation entre entreprises et le cas où plusieurs requêtes tentent de dépasser la limite en même temps.
 
+## Première intégration API (lecture seule)
+
+Le module NestJS `BillingModule` est maintenant enregistré dans `AppModule` et expose deux routes :
+
+- `GET /billing/pricing` : liste uniquement les tarifs explicitement actifs et dans leur période d'effet. Si aucun tarif n'est configuré, la réponse indique `configured: false` et `PRICE_NOT_CONFIGURED` ; aucun prix d'exemple n'est inventé.
+- `GET /billing/subscription` : nécessite un jeton valide et lit l'abonnement de l'entreprise issue du contexte authentifié, jamais un `companyId` fourni par le client. Les références et secrets du fournisseur de paiement ne sont pas exposés.
+
+Cette étape est volontairement **en lecture seule**. Elle ne crée pas de compte, ne déclenche pas de paiement, ne confirme pas un webhook et ne bloque pas encore les routes opérationnelles selon l'abonnement. Le champ `paidAccessExpected` est un résumé d'état, pas un garde d'accès. L'inscription autonome ne doit être activée qu'après implémentation et tests des transactions d'activation, de l'idempotence des notifications fournisseur et des limites de sièges côté API.
+
+La CI a maintenant trois contrôles distincts : tests du domaine de facturation, migration complète sur PostgreSQL 16 jetable, puis génération Prisma Client + typecheck + build NestJS.
+
 ## Statut
 
 Audit de l'historique effectué et migration SQL additive ajoutée à la PR. Le schéma Prisma a été validé avec succès dans GitHub Actions et les tests du domaine passent. La migration SQL n'a pas encore été exécutée sur une base jetable ni appliquée à un environnement. Aucun tarif, compte marchand, paiement, déploiement ou merge n'a été créé. L'inscription autonome et la facturation ne sont pas encore fonctionnelles.
