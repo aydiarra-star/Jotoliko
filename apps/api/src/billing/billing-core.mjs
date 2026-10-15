@@ -86,3 +86,27 @@ export function isProviderPaymentConfirmed(event) {
     event.currency === "XOF"
   );
 }
+
+
+/**
+ * Rapproche un événement confirmé avec le checkout attendu côté serveur.
+ * `signatureVerified` doit provenir du vérificateur réel du fournisseur, jamais
+ * d'un champ fourni par le navigateur. Cette fonction ne vérifie pas elle-même
+ * la signature cryptographique ni l'état distant du paiement.
+ */
+export function matchesExpectedCheckout({
+  event,
+  signatureVerified = false,
+  expectedAmountXof,
+  expectedCurrency = "XOF",
+  expectedReference,
+}) {
+  if (!event || signatureVerified !== true) return false;
+  if (event.providerStatus !== "completed") return false;
+  if (typeof expectedReference !== "string" || expectedReference.trim() === "") return false;
+  if (typeof event.providerReference !== "string" || event.providerReference.trim() !== expectedReference) return false;
+  if (!Number.isSafeInteger(expectedAmountXof) || expectedAmountXof <= 0) return false;
+  if (!Number.isSafeInteger(event.amountXof) || event.amountXof !== expectedAmountXof) return false;
+  if (event.currency !== expectedCurrency || expectedCurrency !== "XOF") return false;
+  return true;
+}
