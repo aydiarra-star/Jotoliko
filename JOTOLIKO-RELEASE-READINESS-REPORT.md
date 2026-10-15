@@ -104,6 +104,7 @@ caractères pour un DTO qui le bornait à 64 : toute deuxième page renvoyait `4
 | `4fb3518` | **Correction de la cause racine du dépôt de preuves** (§ 4.1) ; démarrage résilient à une base indisponible ; diagnostics 5xx |
 | `1b9e5ce` | Contrat d'API, modèle de sécurité et architecture de déploiement réécrits sur l'état réel ; `.env.example` réduit aux variables réellement lues ; deux attentes fausses de la suite de sauvegarde corrigées |
 | `7a612f1` | Bilan des tests publié en annotation, succès compris |
+| `…` (ci-dessous) | Repère d'échec fondé sur le code de sortie de la suite : la republication du journal en annotations d'erreur ne s'applique plus qu'aux exécutions réellement en échec — une suite verte apparaissait sinon avec des annotations de niveau erreur |
 
 ---
 

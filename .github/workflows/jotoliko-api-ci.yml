@@ -220,7 +220,7 @@ jobs:
           # nombre de cas réellement exécutés (y compris les ignorés). Les
           # annotations restent lisibles via l'API des check-runs même quand les
           # journaux du runner ne sont pas téléchargeables.
-          node scripts/emit-vitest-annotations.mjs e2e-report.json e2e.log || true
+          node scripts/emit-vitest-annotations.mjs e2e-report.json e2e.log "$code" || true
           exit "$code"
 
       - name: Publier le journal des tests
