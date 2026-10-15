@@ -222,6 +222,15 @@ export type HttpResult<T = any> = {
   status: number;
   body: T;
   headers: Headers;
+  /**
+   * Journaux du serveur au moment de la réponse.
+   *
+   * Indispensable en CI : un `500` est *muet* par conception (le détail part
+   * dans les journaux du serveur, jamais dans la réponse HTTP). Sans cette
+   * reprise, un échec « attendu 201, reçu 500 » obligeait à un aller-retour de
+   * CI pour connaître la cause réelle.
+   */
+  serverLogs: () => string;
 };
 
 /**
@@ -234,7 +243,15 @@ export type HttpResult<T = any> = {
 export function expectStatus<T>(response: HttpResult<T>, expected: number, label = ""): void {
   if (response.status !== expected) {
     const detail = JSON.stringify(response.body).slice(0, 600);
-    throw new Error(`${label ? `${label} : ` : ""}HTTP ${response.status} (attendu ${expected}) — ${detail}`);
+    // Une erreur serveur est muette côté client : joindre la trace du serveur,
+    // sinon l'échec ne dit rien de la cause.
+    const logs =
+      response.status >= 500 && expected < 500
+        ? `\n--- journaux du serveur (fin) ---\n${response.serverLogs().slice(-1500)}`
+        : "";
+    throw new Error(
+      `${label ? `${label} : ` : ""}HTTP ${response.status} (attendu ${expected}) — ${detail}${logs}`
+    );
   }
 }
 
@@ -300,7 +317,7 @@ export async function request<T = any>(
       parsed = text;
     }
   }
-  return { status: response.status, body: parsed as T, headers: response.headers };
+  return { status: response.status, body: parsed as T, headers: response.headers, serverLogs: api.logs };
 }
 
 // ---------------------------------------------------------------------------

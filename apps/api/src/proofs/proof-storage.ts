@@ -17,7 +17,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, type ReadStream } from "node:fs";
 import { mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 
 /** Taille maximale d'une preuve. Au-delà, le dépôt est refusé (413). */
 export const MAX_PROOF_BYTES = 5 * 1024 * 1024;
@@ -72,11 +72,30 @@ export function sha256Hex(content: Buffer): string {
 }
 
 /**
- * Un segment de clé de stockage est un identifiant ou une empreinte — jamais un
- * chemin. Cette contrainte est la seule barrière nécessaire contre la traversée
- * de répertoire ; elle est vérifiée même si les valeurs viennent de la base.
+ * Longueur maximale d'un segment de clé de stockage.
+ *
+ * Valeur **déduite** de ce que `keyFor` compose réellement, et non choisie :
+ * le segment le plus long est `<empreinte SHA-256 (64 caractères)>.<extension>`
+ * (`.webp` = 4), soit 69 caractères.
+ *
+ * Défaut constaté en intégration HTTP : la borne précédente était fixée à 64
+ * (dimensionnée pour un identifiant), si bien que **tout** dépôt de preuve
+ * échouait sur « Clé de stockage invalide », converti en `500` muet. Aucun test
+ * ne composait la clé réelle avant de la valider ; `tests/unit/proof-storage`
+ * verrouille désormais cet accord.
  */
-const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+export const MAX_STORAGE_SEGMENT_LENGTH = 69;
+
+/**
+ * Un segment de clé de stockage est un identifiant ou une empreinte — jamais un
+ * chemin. Interdit notamment le séparateur, l'antislash et le segment `.` ou
+ * `..` (un segment doit commencer par un caractère alphanumérique). Cette
+ * contrainte est la seule barrière nécessaire contre la traversée de
+ * répertoire ; elle est vérifiée même si les valeurs viennent de la base.
+ */
+const SAFE_SEGMENT = new RegExp(
+  `^[A-Za-z0-9][A-Za-z0-9._-]{0,${MAX_STORAGE_SEGMENT_LENGTH - 1}}$`
+);
 
 export class ProofStorage {
   constructor(private readonly root: string) {}
@@ -99,8 +118,19 @@ export class ProofStorage {
 
   absolutePath(storageKey: string): string {
     const segments = storageKey.split("/");
-    if (segments.length !== 3 || !segments.every((segment) => SAFE_SEGMENT.test(segment))) {
-      throw new Error("Clé de stockage invalide");
+    if (segments.length !== 3) {
+      throw new Error(`Clé de stockage invalide : ${segments.length} segment(s), 3 attendus`);
+    }
+    const rejected = segments.find((segment) => !SAFE_SEGMENT.test(segment));
+    if (rejected !== undefined) {
+      // Le segment fautif est nommé : sans cela, la seule trace d'un échec de
+      // dépôt était « Clé de stockage invalide », insuffisant pour diagnostiquer.
+      throw new Error(
+        `Clé de stockage invalide : segment « ${rejected} » refusé ` +
+          `(1 à ${MAX_STORAGE_SEGMENT_LENGTH} caractères alphanumériques, `.concat(
+          "points, tirets ou soulignés, sans séparateur de chemin)"
+        )
+      );
     }
     const target = resolve(this.root, ...segments);
     const boundary = resolve(this.root) + sep;
@@ -111,7 +141,7 @@ export class ProofStorage {
   /** Écriture atomique : le fichier n'apparaît complet qu'une fois renommé. */
   async save(storageKey: string, content: Buffer): Promise<void> {
     const target = this.absolutePath(storageKey);
-    await mkdir(join(target, ".."), { recursive: true });
+    await mkdir(dirname(target), { recursive: true });
     const temporary = `${target}.tmp-${randomUUID()}`;
     try {
       await writeFile(temporary, content, { mode: 0o600 });

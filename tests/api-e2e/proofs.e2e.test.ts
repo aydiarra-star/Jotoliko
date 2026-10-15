@@ -11,6 +11,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import {
   auditActionsFor,
+  expectStatus,
   connect,
   httpSuite,
   jpegBytes,
@@ -88,7 +89,7 @@ httpSuite("HTTP — preuves de livraison", () => {
       },
     });
 
-    expect(response.status).toBe(201);
+    expectStatus(response, 201, "dépôt de preuve");
     expect(response.body.sha256).toHaveLength(64);
     expect(response.body.sizeBytes).toBe(content.length);
     expect(response.body.mimeType).toBe("image/png");
@@ -119,7 +120,7 @@ httpSuite("HTTP — preuves de livraison", () => {
     const list = await request<any[]>(api, { path: `/missions/${missionId}/proofs`, token: managerToken });
     const serialized = JSON.stringify(list.body);
 
-    expect(list.status).toBe(200);
+    expectStatus(list, 200, "liste des preuves");
     expect(list.body).toHaveLength(1);
     expect(serialized).not.toContain(content.toString("base64"));
     expect(serialized).not.toContain("storageKey");
@@ -137,7 +138,10 @@ httpSuite("HTTP — preuves de livraison", () => {
     );
     const received = Buffer.from(await response.arrayBuffer());
 
-    expect(response.status).toBe(200);
+    expect(
+      response.status,
+      `lecture de la preuve — HTTP ${response.status}${response.status >= 500 ? `\n${api.logs().slice(-1200)}` : ""}`
+    ).toBe(200);
     expect(response.headers.get("content-type")).toBe("image/png");
     expect(response.headers.get("content-length")).toBe(String(content.length));
     expect(response.headers.get("cache-control")).toBe("private, no-store");
@@ -197,7 +201,7 @@ httpSuite("HTTP — preuves de livraison", () => {
       mimeType: "image/jpeg",
     });
 
-    expect(response.status).toBe(413);
+    expectStatus(response, 413, "preuve hors limite");
     const stored = await db.query(`SELECT count(*)::int AS value FROM proof_files WHERE "missionId" = $1`, [missionId]);
     expect(stored.rows[0]?.value).toBe(0);
   });
@@ -213,7 +217,7 @@ httpSuite("HTTP — preuves de livraison", () => {
 
     expect(first.status).toBe(201);
     // Un rejeu n'est pas une création : 200, même identifiant.
-    expect(replay.status).toBe(200);
+    expectStatus(replay, 200, "rejeu du même dépôt");
     expect(replay.body.id).toBe(first.body.id);
 
     const stored = await db.query(`SELECT count(*)::int AS value FROM proof_files WHERE "missionId" = $1`, [missionId]);
@@ -239,7 +243,7 @@ httpSuite("HTTP — preuves de livraison", () => {
       mimeType: "image/jpeg",
     });
 
-    expect(response.status).toBe(201);
+    expectStatus(response, 201, "dépôt de preuve");
     expect(existsSync(proofPathOnDisk(api, companyId, missionId, response.body.sha256, "jpg"))).toBe(true);
   });
 
@@ -254,9 +258,9 @@ httpSuite("HTTP — preuves de livraison", () => {
       token: driverToken,
     });
 
-    expect(upload.status).toBe(403);
-    expect(list.status).toBe(403);
-    expect(download.status).toBe(403);
+    expectStatus(upload, 403, "dépôt refusé");
+    expectStatus(list, 403, "liste refusée");
+    expectStatus(download, 403, "téléchargement refusé");
   });
 
   it("autorise un lecteur à consulter les preuves mais pas à en déposer", async () => {
@@ -275,9 +279,9 @@ httpSuite("HTTP — preuves de livraison", () => {
       token: viewerToken,
     });
 
-    expect(list.status).toBe(200);
-    expect(download.status).toBe(200);
-    expect(upload.status).toBe(403);
+    expectStatus(list, 200, "liste des preuves");
+    expectStatus(download, 200, "téléchargement autorisé");
+    expectStatus(upload, 403, "dépôt refusé");
     expect(remove.status).toBe(403);
   });
 
@@ -298,9 +302,9 @@ httpSuite("HTTP — preuves de livraison", () => {
     });
 
     // 404 : l'existence de la mission n'est pas révélée.
-    expect(upload.status).toBe(404);
-    expect(list.status).toBe(404);
-    expect(download.status).toBe(404);
+    expectStatus(upload, 404, "dépôt hors entreprise");
+    expectStatus(list, 404, "liste hors entreprise");
+    expectStatus(download, 404, "téléchargement hors entreprise");
 
     const stored = await db.query(`SELECT count(*)::int AS value FROM proof_files WHERE "missionId" = $1`, [missionId]);
     expect(stored.rows[0]?.value).toBe(1);
@@ -319,7 +323,7 @@ httpSuite("HTTP — preuves de livraison", () => {
       token: managerToken,
     });
 
-    expect(download.status).toBe(410);
+    expectStatus(download, 410, "fichier absent du stockage");
     // La référence reste visible : l'incident est traçable, pas silencieux.
     const list = await request<any[]>(api, { path: `/missions/${missionId}/proofs`, token: managerToken });
     expect(list.body).toHaveLength(1);
@@ -341,7 +345,7 @@ httpSuite("HTTP — preuves de livraison", () => {
       path: `/missions/${missionId}/proofs/${uploaded.body.id}`,
       token: managerToken,
     });
-    expect(removed.status).toBe(200);
+    expectStatus(removed, 200, "suppression logique");
 
     const list = await request<any[]>(api, { path: `/missions/${missionId}/proofs`, token: managerToken });
     const download = await request(api, {
@@ -350,7 +354,7 @@ httpSuite("HTTP — preuves de livraison", () => {
     });
 
     expect(list.body).toHaveLength(0);
-    expect(download.status).toBe(404);
+    expectStatus(download, 404, "téléchargement hors entreprise");
     expect(await auditActionsFor(db, uploaded.body.id)).toContain("PROOF_DELETED");
 
     // Suppression logique : la ligne subsiste, le fichier n'est pas effacé par
@@ -370,7 +374,7 @@ httpSuite("HTTP — preuves de livraison", () => {
       path: `/missions/${missionId}/proofs`,
       body: { mimeType: "image/png", dataBase64: pngBytes().toString("base64") },
     });
-    expect(list.status).toBe(401);
-    expect(upload.status).toBe(401);
+    expectStatus(list, 401, "liste sans jeton");
+    expectStatus(upload, 401, "dépôt sans jeton");
   });
 });
