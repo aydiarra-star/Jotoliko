@@ -41,7 +41,7 @@ Le socle technique est **démontré par l'exécution**, pas par la compilation :
   serveur tel qu'il est livré (`node apps/api/dist/apps/api/src/main.js`), les
   vrais gardes, la vraie validation et le vrai client Prisma — **115 réussis,
   0 échec, 0 ignoré** (annotation `E2E-BILAN`, § 5.1) ;
-- **170 tests unitaires** locaux (plus 1 ignoré, faute de base locale) ;
+- **171 tests unitaires** locaux (plus 1 ignoré, faute de base locale) ;
 - **26 contrôles HTTP hors ligne** et, en CI, la **chaîne de sauvegarde et de
   restauration réellement exécutée et chronométrée** (§ 7.2) ;
 - le **stockage des preuves de livraison** écrit de vrais fichiers, avec
@@ -131,6 +131,7 @@ bornait à 64 : toute deuxième page renvoyait `400`).
 | `96a43ca` | Défauts révélés par la première exécution réelle des scripts (§ 4.4) ; contrôle statique `checkJs` des scripts d'exploitation |
 | `a335edb` | Deux attentes fausses de la suite système corrigées, non contournées |
 | `382fd23` | Mesures de restauration publiées depuis un fichier, et non depuis le journal — la restitution affichait sinon « aucune mesure » alors que la restauration avait été mesurée |
+| `f76e90c` | **Défaut contredisant sa propre règle** (§ 4.5) : délai de la sonde porté de 5 s à 12 s pour dépasser le budget interne de l'API, vivacité retenue comme discriminant entre « dégradé » et « injoignable », et test système éprouvant le comportement **par défaut** au lieu d'un délai ajusté |
 
 ---
 
@@ -224,6 +225,27 @@ CI, erreurs publiées en annotations). Il a trouvé six erreurs de typage réell
 premier passage, toutes corrigées. Les fonctions pures qui n'étaient pas testées le
 sont désormais, à commencer par celle où vivait l'import manquant.
 
+### 4.5 La sonde de supervision contredisait la règle écrite dans le runbook
+
+**Symptôme.** Le runbook prescrit un délai d'attente **supérieur** au budget de
+diagnostic interne de l'API (10 s). Le script utilisait 5 s par défaut.
+
+**Conséquence réelle.** Sur une base seulement lente, `/health/ready` ne répond pas
+dans les 5 s : la sonde concluait `INDISPONIBLE` (code 2, « intervenir ») au lieu de
+`DEGRADE` (code 1, « alerter »). L'astreinte aurait été envoyée redémarrer une
+instance dont le processus était vivant et le problème dans la base — le mauvais
+geste, au pire moment. Le défaut était d'autant plus insidieux que la règle était
+**écrite** : la documentation était juste, le comportement par défaut ne l'était pas.
+Le test système, lui, contournait le problème en passant `--timeout=40000` : il
+éprouvait une configuration que personne n'utilise.
+
+**Correction.** Le défaut passe à **12 s** et la règle est citée dans le code, à
+l'endroit où elle s'applique. La **vivacité** devient le discriminant : si
+`/health/live` répond, le processus vit, donc l'état est `DEGRADE` — quelle que soit
+la raison du silence de la disponibilité ; si même la vivacité est muette, l'état
+reste `INDISPONIBLE`, où le redémarrage est le bon geste. Le test système n'ajuste
+plus aucun délai : il éprouve exactement ce que l'astreinte exécutera.
+
 ---
 
 ## 5. Tests exécutés — quoi, où, résultat
@@ -278,7 +300,7 @@ hors ligne** (§ 5.4).
 
 | Commande | Résultat observé |
 | --- | --- |
-| `npm test` | **7 fichiers — 170 réussis, 1 ignoré, 0 échec** (171 cas) |
+| `npm test` | **7 fichiers — 171 réussis, 1 ignoré, 0 échec** (172 cas) |
 | `npm run typecheck` | **0 erreur** |
 | `npm run api:typecheck` | **0 erreur** |
 | `npm run ops:typecheck` | **0 erreur** (`checkJs` sur `ops/`) |
@@ -691,7 +713,7 @@ npm ci && npm --prefix apps/api ci
 npm run typecheck            # 0 erreur
 npm run api:typecheck        # 0 erreur
 npm run ops:typecheck        # 0 erreur (checkJs sur ops/)
-npm test                     # 170 réussis, 1 ignoré
+npm test                     # 171 réussis, 1 ignoré
 npm run api:build            # doit produire apps/api/dist/apps/api/src/main.js
 npm run api:smoke            # 26/26 — API réelle, sans base exploitable
 

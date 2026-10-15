@@ -413,7 +413,15 @@ export function evaluateHealth({ live, ready } = {}) {
     return { state: "INDISPONIBLE", exitCode: 2, reason: live?.error ?? "aucune réponse de la sonde de vivacité" };
   }
   if (!ready || !ready.reachable) {
-    return { state: "INDISPONIBLE", exitCode: 2, reason: ready?.error ?? "aucune réponse de la sonde de disponibilité" };
+    // La vivacité répond : le processus vit, c'est sa dépendance (base, volume,
+    // réseau) qui est en cause. Déclarer l'ensemble « injoignable » enverrait
+    // redémarrer une instance qui n'a pas besoin de l'être ; le bon geste est
+    // d'aller regarder la dépendance.
+    return {
+      state: "DEGRADE",
+      exitCode: 1,
+      reason: `vivacité OK, disponibilité sans réponse — ${ready?.error ?? "aucune réponse de la sonde de disponibilité"}`,
+    };
   }
   if (ready.status === 200 && ready.body?.status === "ready") {
     return { state: "DISPONIBLE", exitCode: 0, reason: "sondes nominatives" };

@@ -326,6 +326,25 @@ describe("Supervision — décision de disponibilité", () => {
     expect(injoignable.reason).toContain("ECONNREFUSED");
   });
 
+  it("n'appelle pas « injoignable » un processus vivant dont la dépendance est muette", () => {
+    // La vivacité est le discriminant : elle répond, donc le processus vit. Un
+    // service vivant mais incapable de servir doit être signalé « dégradé »
+    // (consulter la dépendance), pas « injoignable » (redémarrer) — sur une base
+    // lente, la mauvaise conclusion déclenche un redémarrage inutile.
+    const verdict = evaluateHealth({
+      live: { reachable: true, status: 200, body: { status: "ok" } },
+      ready: { reachable: false, error: "/health/ready : délai dépassé (12000 ms)" },
+    });
+    expect(verdict).toMatchObject({ state: "DEGRADE", exitCode: 1 });
+    expect(verdict.reason).toContain("délai dépassé");
+    expect(verdict.reason).toContain("vivacité OK");
+
+    // Symétriquement, une vivacité muette reste « injoignable » : là, le
+    // redémarrage est le bon geste.
+    const mort = evaluateHealth({ live: { reachable: false, error: "ECONNREFUSED" }, ready: { reachable: true, status: 503 } });
+    expect(mort).toMatchObject({ state: "INDISPONIBLE", exitCode: 2 });
+  });
+
   it("ne déclare jamais disponible sur la seule vivacité", () => {
     // Un processus qui répond mais dont la base est absente ne peut honorer
     // aucune requête métier : la vivacité seule ne suffit pas.

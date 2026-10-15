@@ -9,7 +9,7 @@
 //   1  dégradé    → alerter, l'instance est retirée du routage mais le processus vit
 //   2  injoignable → intervenir, le service ne répond pas du tout
 //
-// Usage : node ops/healthcheck.mjs [--url=https://api.example.org] [--timeout=5000]
+// Usage : node ops/healthcheck.mjs [--url=https://api.example.org] [--timeout=12000]
 //
 // Variable : API_BASE_URL.
 
@@ -26,7 +26,11 @@ const options = new Map(
 );
 
 const baseUrl = (options.get("url") ?? process.env.API_BASE_URL ?? "").replace(/\/$/, "");
-const timeoutMs = Number(options.get("timeout") ?? 5_000);
+// Le délai par défaut dépasse le budget de diagnostic interne de l'API
+// (`CONNECT_ATTEMPT_TIMEOUT_MS`, 10 s) : en deçà, une base seulement lente est
+// classée « injoignable » et l'astreinte redémarre une instance qui n'a pas
+// besoin de l'être. Le défaut doit satisfaire la règle, pas exiger de la connaître.
+const timeoutMs = Number(options.get("timeout") ?? 12_000);
 
 if (!baseUrl) {
   annotate("error", "SONDE-CONFIG", "aucune adresse d'API (--url= ou API_BASE_URL)");

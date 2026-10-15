@@ -93,7 +93,17 @@ API_BASE_URL="https://api.exemple.org" node ops/healthcheck.mjs
 
 Le délai d'attente doit rester **supérieur** au délai interne de tentative de
 connexion à la base (`CONNECT_ATTEMPT_TIMEOUT_MS`, 10 s). Avec un délai plus court,
-une base lente est classée « injoignable » alors qu'elle est seulement lente.
+une base lente est classée « injoignable » alors qu'elle est seulement lente. Le
+défaut du script est **12 s**, précisément pour satisfaire cette règle sans que
+l'exploitant ait à la connaître — ne le réduire qu'en connaissance de cause.
+
+La **vivacité** est le discriminant entre les deux états non nominaux : si
+`/health/live` répond, le processus vit et le problème est dans sa dépendance
+(base, volume, réseau) → `DEGRADE` (code 1) ; si même la vivacité ne répond pas,
+l'instance est `INDISPONIBLE` (code 2), et le redémarrage devient le bon geste.
+C'est la règle appliquée par `evaluateHealth`, couverte par les tests unitaires et
+par le test système (les trois états sont éprouvés contre une API réelle, base
+volontairement absente comprise).
 
 ### 2.3 Seuils et alertes à définir
 

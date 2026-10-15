@@ -407,7 +407,11 @@ httpSuite("Scripts d'exploitation : sauvegarde, restauration, rétention, superv
     const baseAbsente = `postgresql://jotoliko:jotoliko@localhost:5432/jotoliko_absente_${randomUUID().slice(0, 8)}`;
     const degradeApi = await startApi({ env: { DATABASE_URL: baseAbsente }, timeoutMs: 60_000 });
     try {
-      const degrade = runOps("healthcheck.mjs", [`--url=${degradeApi.baseUrl}`, "--timeout=40000"], {});
+      // Sans `--timeout` : le test éprouve le comportement par défaut, celui que
+    // l'astreinte rencontrera réellement. Le délai par défaut doit dépasser le
+    // budget de diagnostic interne de l'API, sans quoi une base lente serait
+    // classée « injoignable » et un redémarrage serait déclenché à tort.
+    const degrade = runOps("healthcheck.mjs", [`--url=${degradeApi.baseUrl}`], {});
       expect(degrade.status).toBe(1);
       const verdict = JSON.parse(degrade.stdout);
       expect(verdict.state).toBe("DEGRADE");
