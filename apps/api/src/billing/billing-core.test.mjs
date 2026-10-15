@@ -32,11 +32,15 @@ test("la capacité est appliquée côté serveur", () => {
   assert.throws(() => assertDriverCapacity({ activeDriverCount: 1, requestedActiveCount: 1, paidSeatLimit: 1.5 }), /entier positif ou nul/);
 });
 
-test("accès payant limité à ACTIVE ou à la période de grâce non expirée", () => {
+test("accès payant exige une période ACTIVE non expirée ou une grâce non expirée", () => {
   const now = new Date("2026-10-15T12:00:00Z");
-  assert.equal(hasPaidAccess({ status: "ACTIVE", now }), true);
-  assert.equal(hasPaidAccess({ status: "PAST_DUE", now }), false);
+  assert.equal(hasPaidAccess({ status: "ACTIVE", currentPeriodEnd: "2026-11-15T12:00:00Z", now }), true);
+  assert.equal(hasPaidAccess({ status: "ACTIVE", currentPeriodEnd: "2026-10-15T12:00:00Z", now }), false);
+  assert.equal(hasPaidAccess({ status: "ACTIVE", currentPeriodEnd: "date-invalide", now }), false);
+  assert.equal(hasPaidAccess({ status: "ACTIVE", now }), false);
+  assert.equal(hasPaidAccess({ status: "PAST_DUE", currentPeriodEnd: "2026-11-15T12:00:00Z", now }), false);
   assert.equal(hasPaidAccess({ status: "GRACE_PERIOD", gracePeriodEndsAt: "2026-10-16T12:00:00Z", now }), true);
+  assert.equal(hasPaidAccess({ status: "GRACE_PERIOD", gracePeriodEndsAt: "2026-10-15T12:00:00Z", now }), false);
   assert.equal(hasPaidAccess({ status: "GRACE_PERIOD", gracePeriodEndsAt: "2026-10-14T12:00:00Z", now }), false);
   assert.equal(hasPaidAccess({ status: "GRACE_PERIOD", gracePeriodEndsAt: "date-invalide", now }), false);
 });
