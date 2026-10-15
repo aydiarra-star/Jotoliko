@@ -5,7 +5,7 @@
 **Périmètre** : audit, réconciliation, correction, tests réels, préparation opérationnelle
 **PR produite** : [#4](https://github.com/aydiarra-star/Jotoliko/pull/4) — **5/5 vérifications vertes**
 **PR préservée** : [#3](https://github.com/aydiarra-star/Jotoliko/pull/3) — intacte, ouverte
-**Ampleur** : ≈ 95 commits, 108 fichiers, **+21 789 / −408** lignes depuis `main` (mesuré lors de l'indexation finale ; les commits de documentation qui suivent cette mesure n'en changent pas le sens)
+**Ampleur** : 96 commits, 108 fichiers, **+21 790 / −408** lignes depuis `main` (mesuré lors de l'indexation finale ; mesure vérifiée sur la comparaison GitHub de `main` avec le HEAD de cette branche)
 
 > **Principe de rédaction.** Chaque affirmation de ce rapport renvoie à une
 > commande exécutée ou à une vérification CI consultable. Ce qui n'a pas été
