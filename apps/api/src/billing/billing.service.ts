@@ -68,11 +68,14 @@ export class BillingService {
     }
 
     const now = new Date();
+    const activePeriodIsValid =
+      subscription.currentPeriodEnd !== null && subscription.currentPeriodEnd > now;
     const graceIsActive =
       subscription.status === "GRACE_PERIOD" &&
       subscription.gracePeriodEndsAt !== null &&
       subscription.gracePeriodEndsAt > now;
-    const paidAccessExpected = subscription.status === "ACTIVE" || graceIsActive;
+    const paidAccessExpected =
+      (subscription.status === "ACTIVE" && activePeriodIsValid) || graceIsActive;
 
     return {
       configured: true,
