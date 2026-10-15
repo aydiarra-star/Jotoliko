@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "apps/api/src/billing/**"
+      - "apps/api/src/missions/**"
+      - "apps/api/src/proofs/**"
       - "apps/api/src/app.module.ts"
       - "apps/api/src/prisma.service.ts"
       - "apps/api/package.json"
@@ -16,6 +18,8 @@ on:
       - "feat/monthly-self-service-subscriptions"
     paths:
       - "apps/api/src/billing/**"
+      - "apps/api/src/missions/**"
+      - "apps/api/src/proofs/**"
       - "apps/api/src/app.module.ts"
       - "apps/api/src/prisma.service.ts"
       - "apps/api/package.json"
