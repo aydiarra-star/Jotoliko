@@ -19,6 +19,11 @@ async function bootstrap(): Promise<void> {
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
 
+  // L'identifiant de corrélation est posé en tout premier : une requête rejetée
+  // par l'analyseur de corps doit pouvoir être reliée à sa trace, comme les
+  // autres.
+  app.use(requestIdMiddleware);
+
   // Corps JSON analysé explicitement : la limite par défaut (100 ko) refuserait
   // toute preuve photographique. Elle est calculée à partir de la taille
   // maximale acceptée, jamais choisie « large au cas où ».
@@ -29,8 +34,6 @@ async function bootstrap(): Promise<void> {
   // L'adresse client retenue par Express (donc par la limitation de débit et la
   // journalisation) dépend de ce réglage. À 0, aucun en-tête n'est cru.
   if (config.trustProxyHops > 0) app.set("trust proxy", config.trustProxyHops);
-
-  app.use(requestIdMiddleware);
 
   // Réponses d'erreur : statut réel, jamais de trace d'exécution ni de détail
   // interne (voir apps/api/src/common/exception.filter.ts).

@@ -14,11 +14,14 @@ import type { Request, Response } from "express";
  * Trois responsabilités, et une seule raison d'être : une réponse d'erreur ne
  * doit ni mentir sur sa cause, ni divulguer l'intérieur du service.
  *
- *  1. Une `HttpException` est relayée telle quelle (statut et corps inchangés).
- *  2. Une erreur du transport (JSON malformé, charge trop lourde) porte un
- *     statut réel — mais NestJS la traduirait en `500`. Un client qui envoie un
- *     corps illisible doit recevoir `400`, pas « erreur interne » : sinon
- *     l'exploitation cherche une panne serveur là où la requête est fautive.
+ *  1. Une `HttpException` est relayée telle quelle (statut et corps inchangés),
+ *     en y ajoutant l'identifiant de corrélation. C'est par ce chemin que
+ *     passent les refus métier et la validation — leurs messages sont rédigés
+ *     pour l'appelant et n'exposent rien d'interne.
+ *  2. Une erreur du transport (JSON illisible, charge trop lourde) que NestJS
+ *     n'aurait pas déjà convertie devient un `400`/`413` explicite : un corps
+ *     illisible est une requête fautive, pas une panne serveur. Le cas est
+ *     conservé en défense, même si la version actuelle de Nest le traite.
  *  3. Toute autre erreur devient un `500` volontairement muet : la cause exacte
  *     (pile d'appels, message du moteur de base, nom de colonne) part dans les
  *     journaux du serveur, jamais dans la réponse HTTP.

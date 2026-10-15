@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AuthModule } from "../auth/auth.module";
 import { ProofsController } from "./proofs.controller";
 import { ProofsService } from "./proofs.service";
 import { ProofStorage } from "./proof-storage";
@@ -9,9 +10,12 @@ import { loadConfig } from "../config";
  * `process.env` : un répertoire de preuves mal configuré doit être détecté au
  * démarrage (voir `main.ts`).
  */
-export const PROOF_STORAGE = "JOTOLIKO_PROOF_STORAGE";
-
 @Module({
+  // `AuthModule` exporte AuthGuard, RolesGuard et RoleResolver. Les redéclarer
+  // ici dupliquerait ces instances et casserait la résolution des dépendances
+  // de la garde — c'est exactement l'erreur de démarrage que les tests ont
+  // révélée.
+  imports: [AuthModule],
   controllers: [ProofsController],
   providers: [
     ProofsService,

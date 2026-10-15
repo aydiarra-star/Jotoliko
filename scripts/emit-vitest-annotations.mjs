@@ -36,17 +36,28 @@ if (reportPath && existsSync(reportPath)) {
     for (const file of files) {
       const name = String(file.name ?? "?").replace(`${process.cwd()}/`, "");
       const assertions = Array.isArray(file.assertionResults) ? file.assertionResults : [];
+      const failed = [];
       for (const assertion of assertions) {
         if (assertion.status !== "failed") continue;
         const messages = Array.isArray(assertion.failureMessages) ? assertion.failureMessages : [];
+        failed.push({ title: "E2E", message: `${name} › ${assertion.fullName ?? assertion.title}\n${messages.join("\n")}` });
+      }
+      annotations.push(...failed);
+      // Un fichier peut échouer sans qu'aucun cas ne soit nommé : échec de
+      // `beforeAll`, import cassé, erreur non capturée. Ne pas le rapporter
+      // reviendrait à publier une CI rouge sans cause lisible.
+      if (failed.length === 0 && file.status === "failed") {
         annotations.push({
-          title: "E2E",
-          message: `${name} › ${assertion.fullName ?? assertion.title}\n${messages.join("\n")}`,
+          title: "E2E-FICHIER",
+          message: `${name} : ${file.message ?? "échec de fichier sans cas associé"}`,
         });
       }
     }
     if (annotations.length === 0 && report.success === false) {
-      annotations.push({ title: "E2E-COLLECTE", message: "vitest a échoué sans cas en échec (erreur de chargement ou de configuration)." });
+      annotations.push({
+        title: "E2E-COLLECTE",
+        message: `vitest a échoué sans cas en échec. Bilan : ${report.numFailedTests ?? "?"} en échec, ${report.numFailedTestSuites ?? "?"} fichiers en échec.`,
+      });
     }
   } catch (error) {
     annotations.push({ title: "E2E-RAPPORT", message: `Rapport illisible : ${error.message}` });
@@ -64,4 +75,8 @@ if (annotations.length === 0 && logPath && existsSync(logPath)) {
 for (const annotation of annotations.slice(0, MAX_ANNOTATIONS)) {
   emit(annotation.title, annotation.message);
 }
-console.log(`Annotations publiées : ${Math.min(annotations.length, MAX_ANNOTATIONS)}`);
+// Bilan toujours publié quand le script est appelé (donc quand la suite a
+// échoué) : le nombre de cas en échec est l'information la plus utile.
+console.log(
+  `Annotations publiées : ${Math.min(annotations.length, MAX_ANNOTATIONS)} (total détecté : ${annotations.length})`
+);

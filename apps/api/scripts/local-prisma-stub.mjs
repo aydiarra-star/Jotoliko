@@ -212,14 +212,46 @@ const output = `${header}\n${enumBlocks}\n${modelBlocks}\n${runtime}`;
 
 if (!existsSync(targetDir)) mkdirSync(targetDir, { recursive: true });
 writeFileSync(join(targetDir, "index.d.ts"), output, "utf8");
-writeFileSync(
-  join(targetDir, "index.js"),
-  "// Substitut local : l'exécution réelle nécessite le client généré par Prisma.\n" +
-    "class PrismaClient {\n" +
-    models.map((m) => `  ${m.name.charAt(0).toLowerCase()}${m.name.slice(1)}: any;`).join("\n") +
-    "\n}\nmodule.exports = { PrismaClient, Prisma: { PrismaClient } };\n",
-  "utf8"
-);
+// JavaScript exécutable du substitut.
+//
+// Objectif : permettre de **démarrer l'API hors ligne** pour vérifier ce qui ne
+// dépend pas de la base (configuration, gardes, validation, CORS, réponses
+// d'erreur). Toute requête échoue explicitement : un substitut qui renverrait
+// des données inventées serait plus dangereux qu'une absence de substitut.
+const stubDelegate = (model) =>
+  `const ${model} = new Proxy({}, { get: (_target, property) => () => { throw new Error("Substitut Prisma local : ${model}." + String(property) + " n'est pas exécutable. Générez le vrai client (prisma generate)."); } });`;
+
+const runtimeJs = `// GÉNÉRÉ AUTOMATIQUEMENT — substitut local de @prisma/client (exécutable).
+// Aucune requête n'est simulée : toute opération de données lève une erreur claire.
+${models.map((m) => stubDelegate(m.name.charAt(0).toLowerCase() + m.name.slice(1))).join("\n")}
+
+class PrismaClient {
+  constructor() {
+${models.map((m) => `    this.${m.name.charAt(0).toLowerCase()}${m.name.slice(1)} = ${m.name.charAt(0).toLowerCase()}${m.name.slice(1)};`).join("\n")}
+  }
+  async $connect() {}
+  async $disconnect() {}
+  $on() {}
+  async $transaction() { throw new Error("Substitut Prisma local : aucune transaction réelle. Générez le vrai client (prisma generate)."); }
+  async $queryRaw() { throw new Error("Substitut Prisma local : aucune requête réelle. Générez le vrai client (prisma generate)."); }
+  async $queryRawUnsafe() { throw new Error("Substitut Prisma local : aucune requête réelle."); }
+  async $executeRaw() { throw new Error("Substitut Prisma local : aucune requête réelle."); }
+  async $executeRawUnsafe() { throw new Error("Substitut Prisma local : aucune requête réelle."); }
+  $extends() { return this; }
+}
+
+const Prisma = {
+  PrismaClient,
+  sql: () => { throw new Error("Substitut Prisma local : Prisma.sql n'est pas disponible."); },
+  raw: (value) => value,
+  join: () => { throw new Error("Substitut Prisma local : Prisma.join n'est pas disponible."); },
+  empty: {},
+};
+
+module.exports = { PrismaClient, Prisma };
+`;
+
+writeFileSync(join(targetDir, "index.js"), runtimeJs, "utf8");
 writeFileSync(
   join(targetDir, "package.json"),
   JSON.stringify({ name: "@prisma/client", version: "0.0.0-local-stub", main: "index.js", types: "index.d.ts" }, null, 2),
