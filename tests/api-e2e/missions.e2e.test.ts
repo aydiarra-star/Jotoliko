@@ -18,9 +18,11 @@ import {
   seedActor,
   seedCompany,
   seedMission,
+  expectStatus,
   seedSetting,
   startApi,
   request,
+  uploadProof,
   type Actor,
   type RunningApi,
   type SqlClient,
@@ -215,6 +217,21 @@ httpSuite("HTTP — missions : création, affectation, transitions", () => {
     expect(await auditActionsFor(db, missionId)).toContain("MISSION_TRANSITION");
   });
 
+  it("refuse de clôturer avec la preuve d'une autre mission", async () => {
+    const target = await seedMission(db, { companyId, reference: "CMD-PREUVE-CROISEE", status: "ARRIVE" });
+    const other = await seedMission(db, { companyId, reference: "CMD-PREUVE-SOURCE", status: "ARRIVE" });
+    const uploaded = await uploadProof(api, token, other);
+
+    const response = await request(api, {
+      path: `/missions/${target}/transition`,
+      token,
+      body: { to: "LIVREE", proofId: uploaded.body.id },
+    });
+
+    expect(response.status).toBe(400);
+    expect((await missionRow(db, target)).status).toBe("ARRIVE");
+  });
+
   it("refuse une transition interdite par le graphe et ne touche pas la base", async () => {
     const missionId = await createMission("CMD-TRANSITION-KO");
     const response = await request(api, {
@@ -268,14 +285,27 @@ httpSuite("HTTP — missions : création, affectation, transitions", () => {
     expect(withoutProof.status).toBe(400);
     expect((await missionRow(db, missionId)).status).toBe("ARRIVE");
 
+    // Un identifiant inventé ne vaut pas une preuve : la clôture exige un dépôt
+    // réellement stocké ET rattaché à cette mission.
+    const inventedProof = await request(api, {
+      path: `/missions/${missionId}/transition`,
+      token,
+      body: { to: "LIVREE", proofId: "preuve-inventee" },
+    });
+    expect(inventedProof.status).toBe(400);
+    expect((await missionRow(db, missionId)).status).toBe("ARRIVE");
+
+    const uploaded = await uploadProof(api, token, missionId);
+    expect(uploaded.status).toBe(201);
+
     const withProof = await request<any>(api, {
       path: `/missions/${missionId}/transition`,
       token,
-      body: { to: "LIVREE", proofId: "preuve-1" },
+      body: { to: "LIVREE", proofId: uploaded.body.id },
     });
     expect(withProof.status).toBe(201);
     expect(withProof.body.status).toBe("LIVREE");
-    expect(withProof.body.proofId).toBe("preuve-1");
+    expect(withProof.body.proofId).toBe(uploaded.body.id);
   });
 
   it("respecte une politique de preuve désactivée dans les réglages", async () => {
@@ -357,13 +387,18 @@ httpSuite("HTTP — missions : création, affectation, transitions", () => {
       path: "/missions?take=2",
       token: cursorToken,
     });
+    expectStatus(firstPage, 200, "première page");
     expect(firstPage.body.items).toHaveLength(2);
     expect(firstPage.body.nextCursor).toBeTruthy();
 
+    const cursor = firstPage.body.nextCursor as string;
+    // Le curseur que l'API produit doit être accepté par sa propre validation :
+    // c'est précisément ce que la borne de longueur du DTO doit respecter.
     const secondPage = await request<{ items: { id: string }[]; nextCursor: string | null }>(api, {
-      path: `/missions?take=2&cursor=${encodeURIComponent(firstPage.body.nextCursor as string)}`,
+      path: `/missions?take=2&cursor=${encodeURIComponent(cursor)}`,
       token: cursorToken,
     });
+    expectStatus(secondPage, 200, `seconde page (curseur de ${cursor.length} caractères)`);
     expect(secondPage.body.items).toHaveLength(2);
 
     const seen = new Set([...firstPage.body.items, ...secondPage.body.items].map((m) => m.id));

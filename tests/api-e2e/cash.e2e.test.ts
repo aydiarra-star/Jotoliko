@@ -131,8 +131,14 @@ httpSuite("HTTP — caisse : encaissements, remises, idempotence", () => {
     const response = await pay(missionId, 12000, { key: "e2e-encaissement-1" });
 
     expect(response.status).toBe(201);
-    expect(response.body.money.collected).toBe(12000);
-    expect(response.body.money.difference).toBe(0);
+    expect(response.body.money).toMatchObject({
+      expected: 12000,
+      collected: 12000,
+      remitted: 0,
+      // `difference` = attendu - remis (règle du domaine) : encaisser ne
+      // l'annule pas, seule la remise de caisse le fait.
+      difference: 12000,
+    });
 
     const movements = await cashMovements(db, missionId);
     expect(movements).toHaveLength(1);
@@ -171,8 +177,13 @@ httpSuite("HTTP — caisse : encaissements, remises, idempotence", () => {
       pay(missionId, 10000, { key: "e2e-concurrent-2" }),
     ]);
 
+    // Une seule collecte aboutit. Le refus de la seconde vient d'une règle
+    // métier (« dépasse le reste dû », 400) ou du contrôle de concurrence
+    // (409) selon l'ordre réel d'exécution : les deux sont des refus explicites,
+    // l'invariant qui compte est qu'il n'y ait jamais deux encaissements.
     const statuses = [first.status, second.status].sort();
-    expect(statuses).toEqual([201, 409]);
+    expect(statuses[0]).toBe(201);
+    expect([400, 409]).toContain(statuses[1]);
 
     const row = await missionRow(db, missionId);
     expect(row.collectedAmount).toBe(10000);

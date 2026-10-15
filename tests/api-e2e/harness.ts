@@ -16,7 +16,7 @@
 
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
-import { randomUUID, scryptSync } from "node:crypto";
+import { createHash, randomUUID, scryptSync } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -117,6 +117,8 @@ export type RunningApi = {
   port: number;
   /** Vrai si l'API fait confiance à `X-Forwarded-For` (TRUST_PROXY_HOPS > 0). */
   trustedProxy: boolean;
+  /** Répertoire réellement utilisé par le serveur pour stocker les preuves. */
+  proofStorageDir: string;
   logs: () => string;
   stop: () => Promise<void>;
 };
@@ -147,6 +149,8 @@ export async function startApi(
   if (!databaseUrl) throw new Error("DATABASE_URL requis pour démarrer l'API de test");
 
   const port = await freePort();
+  const proofStorageDir =
+    options.env?.PROOF_STORAGE_DIR ?? join(tmpdir(), "jotoliko-e2e-proofs", randomUUID());
   const child = spawn(process.execPath, [API_ENTRYPOINT], {
     cwd: REPO_ROOT,
     env: {
@@ -156,8 +160,7 @@ export async function startApi(
       DATABASE_URL: databaseUrl,
       AUTH_SECRET: TEST_AUTH_SECRET,
       CORS_ORIGIN: TEST_CORS_ORIGIN,
-      PROOF_STORAGE_DIR:
-        options.env?.PROOF_STORAGE_DIR ?? join(tmpdir(), "jotoliko-e2e-proofs", randomUUID()),
+      PROOF_STORAGE_DIR: proofStorageDir,
       ...options.env,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -187,6 +190,7 @@ export async function startApi(
           baseUrl,
           port,
                   trustedProxy: options.env?.TRUST_PROXY_HOPS !== undefined && Number(options.env.TRUST_PROXY_HOPS) > 0,
+          proofStorageDir,
           logs: () => chunks.join(""),
           stop: async () => {
             if (exited) return;
@@ -219,6 +223,20 @@ export type HttpResult<T = any> = {
   body: T;
   headers: Headers;
 };
+
+/**
+ * Vérifie un statut attendu en incluant le corps de la réponse dans l'erreur.
+ *
+ * Sans cela, un échec ne dit que « 400 attendu 200 » : impossible de distinguer
+ * une validation refusée d'une règle métier ou d'une panne, et le diagnostic
+ * exige un aller-retour de CI supplémentaire.
+ */
+export function expectStatus<T>(response: HttpResult<T>, expected: number, label = ""): void {
+  if (response.status !== expected) {
+    const detail = JSON.stringify(response.body).slice(0, 600);
+    throw new Error(`${label ? `${label} : ` : ""}HTTP ${response.status} (attendu ${expected}) — ${detail}`);
+  }
+}
 
 export type RequestOptions = {
   method?: string;
@@ -465,6 +483,62 @@ export async function seedSetting(
      ON CONFLICT ("companyId") DO UPDATE SET "proofRequired" = EXCLUDED."proofRequired", "updatedAt" = NOW()`,
     [randomUUID(), companyId, values.proofRequired ?? true]
   );
+}
+
+// ---------------------------------------------------------------------------
+// Preuves de livraison
+// ---------------------------------------------------------------------------
+
+/** PNG 1×1 réel (signature binaire valide) : le dépôt doit accepter un vrai fichier. */
+export function pngBytes(): Buffer {
+  return Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64"
+  );
+}
+
+/** En-tête JPEG valide, complété par des octets de remplissage. */
+export function jpegBytes(size = 64): Buffer {
+  const content = Buffer.alloc(Math.max(size, 16), 0x20);
+  content[0] = 0xff;
+  content[1] = 0xd8;
+  content[2] = 0xff;
+  content[3] = 0xe0;
+  return content;
+}
+
+export function uploadProof(
+  api: RunningApi,
+  token: string,
+  missionId: string,
+  options: { content?: Buffer; mimeType?: string; extra?: Record<string, unknown>; headers?: Record<string, string> } = {}
+): Promise<HttpResult<any>> {
+  const content = options.content ?? pngBytes();
+  return request(api, {
+    path: `/missions/${missionId}/proofs`,
+    token,
+    headers: options.headers,
+    body: {
+      mimeType: options.mimeType ?? "image/png",
+      dataBase64: content.toString("base64"),
+      ...options.extra,
+    },
+  });
+}
+
+/** Chemin attendu du fichier stocké, tel que l'API le construit. */
+export function proofPathOnDisk(
+  api: RunningApi,
+  companyId: string,
+  missionId: string,
+  sha256: string,
+  extension: string
+): string {
+  return join(api.proofStorageDir, companyId, missionId, `${sha256}.${extension}`);
+}
+
+export function sha256OfFile(path: string): string {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
 // ---------------------------------------------------------------------------

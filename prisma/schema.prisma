@@ -67,6 +67,7 @@ model Company {
   settings      Setting?
   missions      Mission[]
   cashMovements CashMovement[]
+  proofFiles    ProofFile[]
 
   @@map("companies")
 }
@@ -94,6 +95,7 @@ model User {
   notifications   Notification[]
   driverProfile   Driver?
   assignedMissions Mission[]   @relation("MissionAssignee")
+  uploadedProofs  ProofFile[]  @relation("ProofUploader")
 
   @@map("users")
 }
@@ -676,6 +678,7 @@ model Mission {
   company      Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   assignedUser User?          @relation("MissionAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
   payments     CashMovement[]
+  proofFiles   ProofFile[]
 
   @@unique([companyId, reference])
   @@index([companyId, status])
@@ -747,6 +750,60 @@ model MutationKey {
   @@unique([companyId, operation, idempotencyKey])
   @@index([companyId, createdAt])
   @@map("mutation_keys")
+}
+
+// ---------------------------------------------------------------------------
+// Preuves de livraison stockées
+//
+// `Mission.proofId` reste l'identifiant référencé par la mission : la preuve
+// déposée vit ici. Stocker un identifiant sans stocker le fichier ne prouve
+// rien — c'est pourquoi `storageKey`, `sha256`, `mimeType` et `sizeBytes` sont
+// persistés avec le contenu, et pourquoi la clôture d'une livraison vérifie que
+// l'identifiant correspond bien à un fichier réellement reçu.
+//
+// Le fichier n'est jamais exposé par une URL publique : il est lu par l'API,
+// après contrôle du périmètre de l'appelant.
+// ---------------------------------------------------------------------------
+
+model ProofFile {
+  id        String @id @default(uuid())
+  companyId String
+  missionId String
+  /// Nature de la preuve (photo, signature, nom du récepteur, note).
+  type      ProofType @default(PHOTO)
+
+  mimeType String
+  /// Taille réelle du contenu stocké, en octets.
+  sizeBytes Int
+  /// Empreinte du contenu : rend un doublon détectable sans relire le fichier.
+  sha256    String
+  /// Chemin relatif dans le stockage (entreprise/mission/empreinte.ext).
+  /// Unique : deux dépôts identiques ne créent pas deux fichiers.
+  storageKey String @unique
+
+  uploadedByUserId String?
+  recipientName    String?
+  note             String?
+  /// Position déclarée au moment du dépôt, distincte de celle de la mission.
+  latitude  Float?
+  longitude Float?
+
+  /// Identifiant généré sur le téléphone : permet un dépôt hors ligne rejoué
+  /// sans créer de doublon.
+  clientId   String? @unique
+  recordedAt DateTime?
+  createdAt  DateTime @default(now())
+  /// Suppression logique : la preuve reste auditable, la purge physique est une
+  /// opération d'exploitation documentée.
+  deletedAt DateTime?
+
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  mission    Mission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  uploadedBy User?   @relation("ProofUploader", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, missionId, sha256])
+  @@index([companyId, missionId])
+  @@map("proof_files")
 }
 
 // ---------------------------------------------------------------------------

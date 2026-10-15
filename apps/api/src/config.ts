@@ -5,6 +5,8 @@
 // CORS_ORIGIN : une valeur par défaut permissive en production annulerait toutes
 // les protections d'authentification.
 
+import { join } from "node:path";
+
 export type AppConfig = {
   port: number;
   databaseUrl: string;
@@ -23,6 +25,15 @@ export type AppConfig = {
    * réels, et l'API ne doit jamais être joignable directement dans ce cas.
    */
   trustProxyHops: number;
+  /**
+   * Répertoire persistant des preuves de livraison.
+   *
+   * En production, la valeur est obligatoire : un chemin par défaut ferait
+   * écrire des pièces justificatives dans le système de fichiers éphémère du
+   * conteneur, ce qui les perdrait à chaque redéploiement. En développement, un
+   * chemin local est employé.
+   */
+  proofStorageDir: string;
 };
 
 /** Plage acceptée pour TRUST_PROXY_HOPS : au-delà, la valeur est une erreur. */
@@ -83,7 +94,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     );
   }
 
-  return { port, databaseUrl, authSecret, corsOrigins, isProduction, trustProxyHops };
+  const rawProofStorageDir = env.PROOF_STORAGE_DIR?.trim();
+  if (isProduction && !rawProofStorageDir) {
+    throw new ConfigError(
+      "PROOF_STORAGE_DIR est obligatoire en production : les preuves de livraison doivent être écrites sur un volume persistant"
+    );
+  }
+  const proofStorageDir = rawProofStorageDir || join(process.cwd(), "var", "proofs");
+
+  return { port, databaseUrl, authSecret, corsOrigins, isProduction, trustProxyHops, proofStorageDir };
 }
 
 export function describeConfig(config: AppConfig): Record<string, unknown> {
@@ -93,6 +112,7 @@ export function describeConfig(config: AppConfig): Record<string, unknown> {
     corsOrigins: config.corsOrigins,
     isProduction: config.isProduction,
     trustProxyHops: config.trustProxyHops,
+    proofStorageDir: config.proofStorageDir,
     authSecret: `[${config.authSecret.length} caractères]`,
   };
 }

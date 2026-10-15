@@ -318,6 +318,11 @@ export class MissionsService {
     }
 
     if (to === "LIVREE") {
+      // Une preuve n'est pas un identifiant : l'identifiant cité doit désigner
+      // un fichier réellement reçu, pour CETTE mission et CETTE entreprise.
+      const citedProof = dto.proofId ?? current.proofId ?? null;
+      if (citedProof) await this.assertProofStored(auth.companyId, id, citedProof);
+
       try {
         assertDeliveryClosable(
           this.toDomain(current, proofRequired, dto.proofId ?? current.proofId ?? undefined)
@@ -656,6 +661,20 @@ export class MissionsService {
       throw new Error(`Statut de mission inconnu en base : ${row.status}`);
     }
     return row.status;
+  }
+
+  /**
+   * Vérifie que la preuve citée existe bien dans le stockage.
+   *
+   * Sans ce contrôle, clôturer une livraison reviendrait à recopier une chaîne
+   * de caractères : `proofId` serait un identifiant sans contenu, exactement ce
+   * qu'un audit de preuve doit interdire.
+   */
+  private async assertProofStored(companyId: string, missionId: string, proofId: string): Promise<void> {
+    const proof = await this.prisma.proofFile.findFirst({
+      where: { id: proofId, companyId, missionId, deletedAt: null },
+    });
+    if (!proof) throw new BadRequestException("Preuve inconnue pour cette mission");
   }
 
   /**

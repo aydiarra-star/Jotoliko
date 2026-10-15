@@ -35,8 +35,9 @@ const EXPECTED_TABLES = [
   "audit_logs", "cash_movements", "companies", "customers", "deliveries",
   "driver_positions", "drivers", "memberships", "missions", "mutation_keys",
   "notifications", "order_items", "order_status_history", "orders",
-  "permissions", "payments", "products", "proofs", "role_permissions", "roles",
-  "settings", "settlements", "users", "vehicles", "zones",
+  "permissions", "payments", "products", "proof_files", "proofs",
+  "role_permissions", "roles", "settings", "settlements", "users", "vehicles",
+  "zones",
 ] as const;
 
 let client: SqlClient;

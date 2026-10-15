@@ -1,11 +1,14 @@
 import "reflect-metadata";
-import { ValidationPipe, Logger } from "@nestjs/common";
+import { mkdir } from "node:fs/promises";
+import { Logger, ValidationPipe } from "@nestjs/common";
+import { json, urlencoded } from "express";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
 import { describeConfig, loadConfig } from "./config";
 import { requestIdMiddleware } from "./common/request-id.middleware";
 import { GlobalExceptionFilter } from "./common/exception.filter";
+import { MAX_PROOF_BYTES } from "./proofs/proof-storage";
 
 async function bootstrap(): Promise<void> {
   const logger = new Logger("Bootstrap");
@@ -14,7 +17,14 @@ async function bootstrap(): Promise<void> {
   // démarrer que servir avec un secret absent ou un CORS ouvert.
   const config = loadConfig();
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+
+  // Corps JSON analysé explicitement : la limite par défaut (100 ko) refuserait
+  // toute preuve photographique. Elle est calculée à partir de la taille
+  // maximale acceptée, jamais choisie « large au cas où ».
+  const bodyLimit = Math.ceil((MAX_PROOF_BYTES * 4) / 3) + 64 * 1024;
+  app.use(json({ limit: bodyLimit }));
+  app.use(urlencoded({ extended: false, limit: bodyLimit }));
 
   // L'adresse client retenue par Express (donc par la limitation de débit et la
   // journalisation) dépend de ce réglage. À 0, aucun en-tête n'est cru.
@@ -56,6 +66,17 @@ async function bootstrap(): Promise<void> {
   });
 
   app.enableShutdownHooks();
+
+  // Le répertoire des preuves est préparé avant l'écoute : un volume absent ou
+  // non inscriptible doit empêcher le démarrage, pas se découvrir à la première
+  // livraison clôturée par un livreur.
+  try {
+    await mkdir(config.proofStorageDir, { recursive: true });
+  } catch (error) {
+    throw new Error(
+      `Répertoire de preuves inutilisable (${config.proofStorageDir}) : ${(error as Error).message}`
+    );
+  }
 
   await app.listen(config.port, "0.0.0.0");
   // La configuration effective est journalisée (jamais le secret lui-même,
