@@ -1,42 +1,73 @@
-import { Body, Controller, Get, Headers, Param, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import { AuthGuard } from "../auth/auth.guard";
-import { Roles } from "../auth/roles.decorator";
-import { RolesGuard } from "../auth/roles.guard";
-import { AuthenticatedRequest } from "../auth/auth.types";
+import { RequirePermission, RolesGuard } from "../auth/roles.guard";
+import type { AuthenticatedRequest } from "../auth/auth.types";
 import { MissionsService } from "./missions.service";
+import { CollectPaymentDto } from "./dto/collect-payment.dto";
+import { ListMissionsDto } from "./dto/list-missions.dto";
+import { RecordGpsDto } from "./dto/record-gps.dto";
+import { RemitCashDto } from "./dto/remit-cash.dto";
+import { TransitionDto } from "./dto/transition.dto";
 
+/**
+ * Toutes les routes sont protégées par `AuthGuard` (jeton valide, compte actif,
+ * rattachement vérifié) puis `RolesGuard` (matrice de permissions centrale).
+ * Aucun contrôle d'accès n'est laissé à l'interface.
+ */
 @Controller("missions")
 @UseGuards(AuthGuard, RolesGuard)
 export class MissionsController {
   constructor(private readonly missions: MissionsService) {}
 
   @Get()
-  list(@Req() req: AuthenticatedRequest) { return this.missions.list(req.auth!.companyId); }
+  list(@Req() req: AuthenticatedRequest, @Query() query: ListMissionsDto) {
+    return this.missions.list(req.auth!, query);
+  }
 
   @Get(":id")
-  get(@Req() req: AuthenticatedRequest, @Param("id") id: string) { return this.missions.get(req.auth!.companyId, id); }
+  get(@Req() req: AuthenticatedRequest, @Param("id") id: string) {
+    return this.missions.get(req.auth!, id);
+  }
 
   @Post(":id/transition")
-  @Roles("OWNER", "ADMIN", "MANAGER", "DRIVER")
-  transition(@Req() req: AuthenticatedRequest, @Param("id") id: string, @Body() body: { to?: string; proofId?: string }) {
-    return this.missions.transition(req.auth!, id, body.to, body.proofId);
+  @RequirePermission("transitionMission")
+  transition(
+    @Req() req: AuthenticatedRequest,
+    @Param("id") id: string,
+    @Body() body: TransitionDto
+  ) {
+    return this.missions.transition(req.auth!, id, body, req.requestId);
   }
 
   @Post(":id/payment")
-  @Roles("OWNER", "ADMIN", "MANAGER", "DRIVER")
-  payment(@Req() req: AuthenticatedRequest, @Param("id") id: string, @Body() body: { collected?: number }, @Headers() headers: Record<string,string>) {
-    return this.missions.collect(req.auth!, id, body.collected, headers["idempotency-key"]);
+  @RequirePermission("collectPayment")
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  payment(
+    @Req() req: AuthenticatedRequest,
+    @Param("id") id: string,
+    @Body() body: CollectPaymentDto,
+    @Headers("idempotency-key") key?: string
+  ) {
+    return this.missions.collect(req.auth!, id, body, key, req.requestId);
   }
 
   @Post(":id/remittance")
-  @Roles("OWNER", "ADMIN", "MANAGER")
-  remittance(@Req() req: AuthenticatedRequest, @Param("id") id: string, @Body() body: { amount?: number }, @Headers() headers: Record<string,string>) {
-    return this.missions.remit(req.auth!, id, body.amount, headers["idempotency-key"]);
+  @RequirePermission("remitCash")
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  remittance(
+    @Req() req: AuthenticatedRequest,
+    @Param("id") id: string,
+    @Body() body: RemitCashDto,
+    @Headers("idempotency-key") key?: string
+  ) {
+    return this.missions.remit(req.auth!, id, body, key, req.requestId);
   }
 
   @Post(":id/gps")
-  @Roles("OWNER", "ADMIN", "MANAGER", "DRIVER")
-  gps(@Req() req: AuthenticatedRequest, @Param("id") id: string, @Body() body: { latitude?: number; longitude?: number; recordedAt?: string }) {
-    return this.missions.gps(req.auth!, id, body);
+  @RequirePermission("recordGps")
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  gps(@Req() req: AuthenticatedRequest, @Param("id") id: string, @Body() body: RecordGpsDto) {
+    return this.missions.recordGps(req.auth!, id, body, req.requestId);
   }
 }

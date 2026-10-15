@@ -16,7 +16,22 @@ import {
   ShieldCheck,
   Smartphone,
   WalletCards,
+  type LucideIcon,
 } from "lucide-react";
+
+/**
+ * KPI opérationnel. Le typage est explicite : un tableau de tuples non typé
+ * infère `(string | LucideIcon)[]`, ce qui rend chaque élément non assignable
+ * à `ReactNode` et casse le typecheck du build Next.
+ */
+type Kpi = { title: string; value: string; note: string; icon: LucideIcon };
+
+const RESPONSABLE_KPIS: Kpi[] = [
+  { title: "Missions aujourd’hui", value: "—", note: "Donnée serveur requise", icon: Route },
+  { title: "À affecter", value: "—", note: "Aucune donnée inventée", icon: Package },
+  { title: "En cours", value: "—", note: "Suivi réel requis", icon: MapPin },
+  { title: "À vérifier", value: "2", note: "Démonstration", icon: AlertTriangle },
+];
 
 type Mission = {
   id: string;
@@ -86,16 +101,11 @@ export default function OperationsPage() {
         {role === "responsable" && (
           <>
             <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                ["Missions aujourd’hui", "—", "Donnée serveur requise", Route],
-                ["À affecter", "—", "Aucune donnée inventée", Package],
-                ["En cours", "—", "Suivi réel requis", MapPin],
-                ["À vérifier", "2", "Démonstration", AlertTriangle],
-              ].map(([title, value, note, Icon]) => (
-                <div key={title as string} className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70">
+              {RESPONSABLE_KPIS.map(({ title, value, note, icon: Icon }) => (
+                <div key={title} className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70">
                   <div className="flex items-center justify-between">
-                    <Icon className="h-5 w-5 text-emerald-600" />
-                    <span className="text-2xl font-bold">{typeof value === "string" || typeof value === "number" ? value : "—"}</span>
+                    <Icon className="h-5 w-5 text-emerald-600" aria-hidden="true" />
+                    <span className="text-2xl font-bold">{value}</span>
                   </div>
                   <p className="mt-4 font-semibold">{title}</p>
                   <p className="mt-1 text-xs text-slate-500">{note}</p>

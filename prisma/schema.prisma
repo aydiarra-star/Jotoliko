@@ -10,8 +10,26 @@
 //     est une entité de premier plan, pas un champ dérivé.
 //  4. Traçabilité : les changements de statut de commande sont historisés.
 
+// Schéma canonique unique du produit.
+//
+// Il n'existe qu'UN seul schéma Prisma dans ce dépôt. Le schéma secondaire
+// `apps/api/prisma/schema.prisma` qui dupliquait une partie du modèle (et
+// omettait Settlement, Proof, Payment, clientId et les métadonnées offline) a
+// été fusionné ici : ses apports réels (Mission, TruthStatus, AuditEvent,
+// MutationKey) sont conservés plus bas.
+//
+// L'API génère son client depuis ce fichier :
+//   cd apps/api && npm run prisma:generate
+// soit : prisma generate --schema ../../prisma/schema.prisma
+//
+// `output` cible explicitement `apps/api/node_modules/.prisma/client` afin que
+// `import { PrismaClient } from "@prisma/client"` se résolve correctement dans un
+// dépôt où le schéma vit à la racine (la résolution par défaut viserait la
+// racine et l'API ne trouverait pas son client).
+
 generator client {
   provider = "prisma-client-js"
+  output   = "../apps/api/node_modules/.prisma/client"
 }
 
 datasource db {
@@ -47,6 +65,8 @@ model Company {
   auditLogs     AuditLog[]
   notifications Notification[]
   settings      Setting?
+  missions      Mission[]
+  cashMovements CashMovement[]
 
   @@map("companies")
 }
@@ -56,6 +76,12 @@ model User {
   email        String    @unique
   phone        String?
   passwordHash String
+  // Sel aléatoire par utilisateur. Un sel global ou dérivé d'un secret
+  // permettrait de précalculer une table de correspondance pour tous les comptes.
+  passwordSalt String
+  // Incrémenter invalide instantanément tous les jetons déjà émis pour cet
+  // utilisateur (déconnexion forcée, suspicion de compromission).
+  tokenVersion Int       @default(0)
   firstName    String
   lastName     String
   isActive     Boolean   @default(true)
@@ -63,10 +89,11 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  memberships   Membership[]
-  auditLogs     AuditLog[]
-  notifications Notification[]
-  driverProfile Driver?
+  memberships     Membership[]
+  auditLogs       AuditLog[]
+  notifications   Notification[]
+  driverProfile   Driver?
+  assignedMissions Mission[]   @relation("MissionAssignee")
 
   @@map("users")
 }
@@ -514,6 +541,10 @@ model AuditLog {
   before     Json?
   after      Json?
   ip         String?
+  // Identifiant de corrélation de la requête HTTP ayant produit la mutation.
+  requestId  String?
+  // Origine de la mutation : API, TERRAIN (reprise hors ligne), SYSTEME.
+  source     String   @default("API")
   createdAt  DateTime @default(now())
 
   company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -564,3 +595,165 @@ model Setting {
 
   @@map("settings")
 }
+
+// ---------------------------------------------------------------------------
+// Couche opérationnelle Jotoliko OS
+//
+// Ces modèles servent le centre des opérations (API NestJS) : une « mission »
+// est le travail de livraison affecté à un livreur. Elle référence
+// facultativement la commande documentée (`Order`) — l'unification complète
+// Mission/Order/Delivery reste à faire et est suivie dans le rapport de release.
+// ---------------------------------------------------------------------------
+
+enum MissionStatus {
+  A_AFFECTER
+  AFFECTEE
+  EN_ROUTE
+  ARRIVE
+  LIVREE
+  ECHEC
+  REPROGRAMMEE
+  RETOUR
+}
+
+enum TruthStatus {
+  REEL
+  ESTIME
+  DERNIERE_POSITION_CONNUE
+  INDISPONIBLE
+  A_VERIFIER
+  CONFIRME
+}
+
+model Mission {
+  id        String @id @default(uuid())
+  companyId String
+  // Identifiant métier stable, unique par entreprise : support des reprises
+  // hors ligne et des impressions de bordereaux.
+  reference String
+
+  orderId String?
+
+  clientName String
+  phone      String?
+  status     MissionStatus @default(A_AFFECTER)
+
+  // Adressage terrain : quartier, zone, repère libre et instructions d'accès
+  // coexistent avec la position GPS. Le repère libre reste la source de vérité
+  // sur le terrain.
+  country            String? @default("SN")
+  city               String?
+  quartier           String?
+  zone               String?
+  writtenAddress     String?
+  landmark           String?
+  accessInstructions String?
+
+  // Position datée. `gpsTruth` empêche d'afficher une position périmée comme
+  // actuelle : voir gpsTruthFromAge dans lib/jotoliko-os/core.ts.
+  latitude  Float?
+  longitude Float?
+  gpsAt     DateTime?
+  gpsTruth  TruthStatus @default(INDISPONIBLE)
+
+  proofId String?
+
+  assignedUserId String?
+
+  // Montants en unité monétaire entière (FCFA sans subdivision).
+  expectedAmount  Int @default(0)
+  collectedAmount Int @default(0)
+  remittedAmount  Int @default(0)
+
+  // Métadonnées offline-first : horodatage terrain distinct de l'heure serveur.
+  recordedAt DateTime?
+  syncedAt   DateTime?
+  deviceId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company      Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assignedUser User?          @relation("MissionAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  payments     CashMovement[]
+
+  @@unique([companyId, reference])
+  @@index([companyId, status])
+  @@index([companyId, assignedUserId, status])
+  @@index([companyId, createdAt])
+  @@map("missions")
+}
+
+// ---------------------------------------------------------------------------
+// Caisse : journal immuable des mouvements d'espèces
+//
+// Les compteurs `collectedAmount` / `remittedAmount` de Mission sont des caches
+// de lecture. La vérité comptable est ce journal : il permet de rejouer, auditer
+// et expliquer un écart de caisse, ce que des compteurs seuls ne permettent pas.
+// ---------------------------------------------------------------------------
+
+enum CashMovementType {
+  ENCAISSEMENT
+  REMISE
+  CORRECTION
+  ANNULATION
+}
+
+model CashMovement {
+  id         String           @id @default(uuid())
+  companyId  String
+  missionId  String
+  driverId   String?
+  type       CashMovementType
+  // Toujours positif : le sens est porté par `type`.
+  amount     Int
+  note       String?
+  actorUserId String
+
+  // Idempotence : une même clé rejouée ne crée jamais un second mouvement.
+  idempotencyKey String
+  // Empreinte de la requête : une même clé avec un corps différent est rejetée
+  // au lieu de renvoyer silencieusement un résultat qui ne correspond pas.
+  requestHash    String
+
+  // Horodatage double : heure de l'appareil vs heure serveur.
+  recordedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  mission Mission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, createdAt])
+  @@index([missionId, type])
+  @@index([companyId, driverId, createdAt])
+  @@map("cash_movements")
+}
+
+// ---------------------------------------------------------------------------
+// Idempotence générique des mutations serveur
+// ---------------------------------------------------------------------------
+
+model MutationKey {
+  id             String   @id @default(uuid())
+  companyId      String
+  // Espace de nommage : "<OPÉRATION>:<idRessource>" (voir operationScope).
+  operation      String
+  idempotencyKey String
+  requestHash    String
+  resultJson     String
+  createdAt      DateTime @default(now())
+
+  @@unique([companyId, operation, idempotencyKey])
+  @@index([companyId, createdAt])
+  @@map("mutation_keys")
+}
+
+// ---------------------------------------------------------------------------
+// Journal d'audit des mutations sensibles
+//
+// Une seule table d'audit dans tout le produit (`audit_logs`, cf. AGENTS.md).
+// La couche opérationnelle écrit donc dans `AuditLog` — pas dans une seconde
+// table parallèle, qui aurait immanquablement divergé.
+// ---------------------------------------------------------------------------
+

@@ -7,24 +7,24 @@ Deux choses cohabitent dans ce dépôt :
 1. Le **site marketing** (Next.js 15, export statique) — à la racine.
 2. La **documentation produit et le modèle de données** — `docs/`, `prisma/`.
 
-L'API NestJS, la console web et l'application Flutter ne sont pas encore dans ce
-dépôt.
+Depuis la PR #3, l'API NestJS (`apps/api/`) est également présente. Le dépôt
+n'utilise **pas** npm workspaces : la racine est le site, et `apps/api` a son
+propre `package.json` et son propre `package-lock.json`.
+`apps/api/tsconfig.json` compile aussi `lib/jotoliko-os/` : les invariants métier
+sont partagés, jamais dupliqués. La console web dédiée et l'application Flutter
+restent hors du dépôt.
 
 ## Contraintes de ce dépôt (vérifiées)
 
 ### Jetons et permissions
 
-- Le jeton d'intégration injecté (`GITHUB_TOKEN`, préfixe `ghu_`) est **en lecture
-  seule** sur `aydiarra-star/Jotoliko`. L'API répond `403 Resource not accessible by
-  integration` sur toute écriture (`git/refs`, `contents`). Le champ
-  `permissions.push` renvoyé par l'API est trompeur : il décrit le rôle du compte,
-  pas les droits du jeton.
-- **Les fichiers `.github/workflows/*` ne peuvent pas être poussés sans un jeton
-  ayant le scope `workflow`.** GitHub rejette le push, même via l'API Contents.
-  C'est une protection côté GitHub, pas un problème de configuration.
-- Conséquence : ne jamais inclure `.github/workflows/` dans un commit destiné à être
-  poussé avec un jeton sans scope `workflow`. Le fichier `deploy-pages.yml` est
-  versionné localement mais doit être ajouté manuellement depuis l'interface GitHub.
+- **Mise à jour 2026-10-15 : ce qui suivait était obsolète.** Le jeton utilisé
+  depuis l'environnement Arena écrit normalement, **y compris les fichiers
+  `.github/workflows/*`** : un push de branche contenant les workflows a été
+  accepté (vérifié). Le workflow `deploy-pages.yml`, qui manquait dans le dépôt
+  alors que ce document et le README le référençaient, a donc pu être restauré.
+- Si un push de workflow est un jour rejeté, c'est un problème de droits du jeton
+  du moment, pas une règle générale du dépôt.
 
 ### Déploiement
 
@@ -49,6 +49,16 @@ npm run build
   est **6.19.3** (`prisma` et `@prisma/client` alignés).
 - Valider le schéma avec une `DATABASE_URL` factice :
   `DATABASE_URL="postgresql://jotoliko:jotoliko@localhost:5432/jotoliko" npx prisma validate`
+- **Un seul schéma canonique : `prisma/schema.prisma`.** L'ancien schéma parallèle
+  `apps/api/prisma/schema.prisma` a été fusionné puis supprimé — il omettait
+  `Settlement`, `Proof`, `Payment`, `clientId` et les métadonnées hors ligne.
+  Ne pas en recréer : `jotoliko-api-ci.yml` échoue en cas de dérive entre le
+  schéma et `prisma/migrations/`.
+- **`prisma generate`, `validate` et `migrate` exigent le téléchargement d'un
+  moteur depuis `binaries.prisma.sh`.** Si cet hôte est inaccessible (sandbox
+  hors ligne), ces commandes échouent. Pour ne pas laisser l'API invérifiable :
+  `node apps/api/scripts/local-prisma-stub.mjs` dérive un substitut de types
+  depuis le schéma réel. Outil **local uniquement**, jamais utilisé en CI.
 
 ## Conventions
 

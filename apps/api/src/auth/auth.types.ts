@@ -1,6 +1,5 @@
-import { Request } from "express";
-
-export type AppRole = "OWNER" | "ADMIN" | "MANAGER" | "DRIVER" | "SELLER" | "VIEWER";
+import type { Request } from "express";
+import type { AppRole } from "../../../../lib/jotoliko-os/core";
 
 export type AuthContext = {
   userId: string;

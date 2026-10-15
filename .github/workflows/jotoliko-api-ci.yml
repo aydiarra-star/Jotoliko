@@ -1,27 +1,96 @@
 name: Jotoliko API CI
 
+# Vérifie l'API NestJS : génération du client Prisma depuis le schéma canonique,
+# application des migrations sur une base vierge, détection de dérive entre le
+# schéma et les migrations, typecheck et build.
+#
+# Ce workflow était auparavant en échec : `@types/express` était absent des
+# dépendances, donc `nest build` échouait sur `src/auth/auth.types.ts`.
+
 on:
   push:
     branches:
-      - chore/jotoliko-os-operations-2026
+      - main
   pull_request:
     branches:
       - main
-      - chore/jotoliko-os-operations-2026
+  workflow_dispatch:
+
+concurrency:
+  group: jotoliko-api-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   api:
+    name: API (Prisma, migrations, build)
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/api
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: jotoliko
+          POSTGRES_PASSWORD: jotoliko
+          POSTGRES_DB: jotoliko_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jotoliko -d jotoliko_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://jotoliko:jotoliko@localhost:5432/jotoliko_ci
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/api/package.json
-      - run: npm install
-      - run: npm run prisma:generate
-      - run: npm run build
+          cache-dependency-path: apps/api/package-lock.json
+
+      - name: Installation reproductible
+        run: npm ci
+
+      - name: Validation du schéma Prisma
+        run: npm run prisma:validate
+
+      - name: Génération du client Prisma
+        run: npm run prisma:generate
+
+      - name: Application des migrations
+        run: npm run prisma:migrate:deploy
+
+      - name: Détection de dérive schéma ⇄ migrations
+        # Échoue si le schéma déclare une table ou une colonne qu'aucune
+        # migration ne crée. C'est le garde-fou qui empêche la réapparition d'un
+        # schéma parallèle non migré.
+        run: |
+          npx prisma migrate diff \
+            --from-migrations ../../prisma/migrations \
+            --to-schema-datamodel ../../prisma/schema.prisma \
+            --shadow-database-url "$DATABASE_URL" \
+            --exit-code
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Vérification du point d'entrée démarré
+        # Le script `start` doit pointer vers l'artefact réellement produit :
+        # une erreur de chemin ici ne se voit qu'au déploiement.
+        run: test -f dist/apps/api/src/main.js
+
+      - name: Audit des dépendances (informatif)
+        # Les avis de sécurité transitifs sont signalés sans bloquer la CI :
+        # une remédiation peut exiger une montée de version majeure.
+        continue-on-error: true
+        run: npm audit --audit-level=moderate

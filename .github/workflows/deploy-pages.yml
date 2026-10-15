@@ -1,0 +1,62 @@
+name: Deploy site to GitHub Pages
+
+# Ce workflow est référencé par README.md et AGENTS.md, mais il était absent du
+# dépôt : la branche `gh-pages` n'était donc plus alimentée automatiquement et le
+# site publié pouvait rester figé sur une version ancienne. Il est restauré ici.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gh-pages-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    name: Build et publication sur gh-pages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Vérifications avant publication
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Build de l'export statique
+        env:
+          # Le site est servi depuis https://<org>.github.io/Jotoliko/ : sans ce
+          # préfixe, tous les assets renvoient 404.
+          NEXT_PUBLIC_BASE_PATH: /Jotoliko
+          NEXT_PUBLIC_SITE_URL: https://aydiarra-star.github.io/Jotoliko
+        run: npm run build
+
+      - name: Préparation de la publication
+        # `.nojekyll` est indispensable : sans lui, Jekyll ignore le dossier
+        # `_next/` et la totalité des assets du site renvoie 404.
+        run: |
+          touch out/.nojekyll
+          test -f out/index.html
+
+      - name: Publication sur la branche gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./out
+          publish_branch: gh-pages
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
+          commit_message: "deploy: ${{ github.sha }}"
