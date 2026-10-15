@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
+import { BillingModule } from "../billing/billing.module";
 import { ProofsController } from "./proofs.controller";
 import { ProofsService } from "./proofs.service";
 import { ProofStorage } from "./proof-storage";
@@ -15,7 +16,7 @@ import { loadConfig } from "../config";
   // ici dupliquerait ces instances et casserait la résolution des dépendances
   // de la garde — c'est exactement l'erreur de démarrage que les tests ont
   // révélée.
-  imports: [AuthModule],
+  imports: [AuthModule, BillingModule],
   controllers: [ProofsController],
   providers: [
     ProofsService,
