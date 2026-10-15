@@ -124,9 +124,9 @@ CREATE TABLE "billing_payments" (
   CONSTRAINT "billing_payments_currency_xof" CHECK ("currency" = 'XOF'),
   CONSTRAINT "billing_payments_owner_required" CHECK ("signupAttemptId" IS NOT NULL OR "subscriptionId" IS NOT NULL),
   CONSTRAINT "billing_payments_signupAttemptId_fkey" FOREIGN KEY ("signupAttemptId")
-    REFERENCES "signup_attempts" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    REFERENCES "signup_attempts" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT "billing_payments_subscriptionId_fkey" FOREIGN KEY ("subscriptionId")
-    REFERENCES "subscriptions" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    REFERENCES "subscriptions" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 CREATE UNIQUE INDEX "billing_payments_idempotencyKey_key" ON "billing_payments" ("idempotencyKey");
