@@ -425,7 +425,11 @@ export class MissionsService {
     operation: string,
     key: string,
     requestHash: string,
-    run: (tx: Parameters<Parameters<PrismaService["$transaction"]>[0]>[0]) => Promise<T>
+    // `Prisma.TransactionClient` est le type officiel du client de transaction.
+    // Extraire ce type via Parameters<Parameters<...>> serait fragile : le vrai
+    // $transaction est surchargé et l'extraction retiendrait la mauvaise
+    // surcharge (forme tableau au lieu de la forme rappel).
+    run: (tx: Prisma.TransactionClient) => Promise<T>
   ): Promise<T> {
     const previous = await this.prisma.mutationKey.findFirst({
       where: { companyId: auth.companyId, operation, idempotencyKey: key },
@@ -475,7 +479,7 @@ export class MissionsService {
 
   /** Verrouille la ligne de mission pour la durée de la transaction. */
   private async lockMission(
-    tx: Parameters<Parameters<PrismaService["$transaction"]>[0]>[0],
+    tx: Prisma.TransactionClient,
     companyId: string,
     id: string
   ): Promise<MissionRow | null> {

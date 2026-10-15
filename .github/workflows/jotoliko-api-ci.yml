@@ -108,7 +108,23 @@ jobs:
           retention-days: 7
 
       - name: Typecheck
-        run: npm run typecheck
+        # Les erreurs sont publiées en annotations : celles-ci restent lisibles
+        # via l'API des check-runs quand les journaux du runner ne sont pas
+        # téléchargeables depuis l'environnement appelant.
+        run: |
+          set +e
+          npx tsc --noEmit > tsc.log 2>&1
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            n=0
+            while IFS= read -r line && [ "$n" -lt 40 ]; do
+              [ -z "$line" ] && continue
+              echo "::error title=TSC(${n})::$(printf '%s' "$line" | head -c 900)"
+              n=$((n + 1))
+            done < tsc.log
+          fi
+          exit "$code"
 
       - name: Build
         run: npm run build

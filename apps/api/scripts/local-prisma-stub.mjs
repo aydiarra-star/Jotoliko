@@ -92,6 +92,7 @@ for (const match of source.matchAll(/model\s+(\w+)\s*\{([\s\S]*?)\n\}/g)) {
 }
 
 const header = `// GÉNÉRÉ AUTOMATIQUEMENT — substitut local de @prisma/client.
+import type * as runtime from "@prisma/client/runtime/library";
 // Source : prisma/schema.prisma. Ne pas modifier à la main.
 // En CI, \`prisma generate\` produit le vrai client et ce fichier est remplacé.
 `;
@@ -182,12 +183,26 @@ type PrismaClientCtor = new (options?: unknown) => PrismaClient;
  * Un simple objet exporte ne suffirait pas : Prisma.Sql est un TYPE.
  */
 export namespace Prisma {
-  export type Sql = { readonly __sql: string; readonly values: readonly unknown[] };
+  /**
+   * La surface SQL brute est reprise TELLE QUELLE du runtime Prisma réel
+   * (@prisma/client/runtime/library), qui est livré avec le paquet et disponible
+   * hors ligne. La dériver plutôt que la réécrire évite exactement le piège
+   * rencontré : un substitut trop permissif laissait passer l'API de CI qui
+   * refusait, elle, une chaîne brute ou un fragment mal typé.
+   */
+  export type Sql = runtime.Sql;
+  export type RawValue = runtime.RawValue;
+  export type PrismaClientKnownRequestError = runtime.PrismaClientKnownRequestError;
+  /** Client transmis au rappel de $transaction (voir Prisma.TransactionClient). */
+  export type TransactionClient = Omit<
+    import("./index").PrismaClient,
+    "$transaction" | "$connect" | "$disconnect" | "$on" | "$extends" | "$queryRaw" | "$executeRaw"
+  > & Pick<import("./index").PrismaClient, "$queryRaw" | "$executeRaw">;
   export const PrismaClient: PrismaClientCtor;
-  export const sql: (strings: TemplateStringsArray, ...values: unknown[]) => Sql;
-  export const raw: (value: string) => Sql;
-  export const join: (values: Sql[], separator?: string) => Sql;
-  export const empty: Sql;
+  export const sql: typeof runtime.sqltag;
+  export const raw: typeof runtime.raw;
+  export const join: typeof runtime.join;
+  export const empty: runtime.Sql;
 }
 
 export type PrismaClientKnownRequestError = Error & { code?: string };
