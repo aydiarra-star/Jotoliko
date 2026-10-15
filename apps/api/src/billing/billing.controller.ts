@@ -1,4 +1,4 @@
-import { Controller, Get, Req, UseGuards } from "@nestjs/common";
+import { Controller, Get, Query, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "../auth/auth.guard";
 import type { AuthenticatedRequest } from "../auth/auth.types";
 import { BillingService } from "./billing.service";
@@ -11,6 +11,12 @@ export class BillingController {
   @Get("pricing")
   pricing() {
     return this.billing.listPublicPrices();
+  }
+
+  /** Public read-only monthly estimate; never creates an account or payment. */
+  @Get("quote")
+  quote(@Query("seats") seats?: string) {
+    return this.billing.quoteMonthly(seats ?? "");
   }
 
   /** Authenticated company-scoped subscription summary; never accepts companyId from the client. */
