@@ -281,8 +281,8 @@ conservées. Constate publié dans les annotations du job vert :
 ### 5.1 Bout en bout, sur PostgreSQL 16 réel (CI)
 
 Job « Tests HTTP de bout en bout (API + PostgreSQL 16) » —
-[run 38723253967 / job 116382823224](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723253967/job/116382823224)
-— **pass**, 1 min 1.
+[run 38723922902 / job 116384988565](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723922902/job/116384988565)
+— **pass**, 1 min 7.
 
 Le serveur est démarré **tel qu'il est livré** et interrogé par de vraies requêtes
 HTTP : chaîne garde d'authentification → garde de permissions → validation →
@@ -310,11 +310,11 @@ Bilan publié par la CI elle-même (annotation `E2E-BILAN`, vérifiable par API)
 
 | Vérification | Résultat | Durée | Lien |
 | --- | --- | --- | --- |
-| API (Prisma, migrations, build) | ✅ pass | 1 min 17 | [job 116382822788](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723253967/job/116382822788) |
-| Tests HTTP de bout en bout (API + PostgreSQL 16) | ✅ pass | 1 min 1 | [job 116382823224](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723253967/job/116382823224) |
-| Sauvegarde, restauration mesurée et purge (base de test) | ✅ pass | 1 min 6 | [job 116382780861](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723253917/job/116382780861) |
-| Reality tests sur PostgreSQL 16 réel | ✅ pass | 42 s | [job 116382807087](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723253950/job/116382807087) |
-| Site + invariants + PostgreSQL embarqué | ✅ pass | 55 s | [job 116382807419](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723253950/job/116382807419) |
+| API (Prisma, migrations, build) | ✅ pass | 1 min 14 | [job 116384987941](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723922902/job/116384987941) |
+| Tests HTTP de bout en bout (API + PostgreSQL 16) | ✅ pass | 1 min 7 | [job 116384988565](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723922902/job/116384988565) |
+| Sauvegarde, restauration mesurée et purge (base de test) | ✅ pass | 58 s | [job 116384988104](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723922925/job/116384988104) |
+| Reality tests sur PostgreSQL 16 réel | ✅ pass | 45 s | [job 116384987712](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723922862/job/116384987712) |
+| Site + invariants + PostgreSQL embarqué | ✅ pass | 1 min 9 | [job 116384988163](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723922862/job/116384988163) |
 
 Ces cinq vérifications portent **toutes** le niveau `success`, et les cinq jobs
 comptent **zéro annotation de niveau `failure`** — vérifié en interrogeant
@@ -478,7 +478,7 @@ ligne de preuve, la caisse et le journal d'audit.
 
 **(b) Chaîne opérationnelle** — les scripts qui seront réellement planifiés sont
 exécutés de bout en bout, sur une base de test, par l'exercice
-`Jotoliko — exercice d'exploitation` ([job 116382780861](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723253917/job/116382780861)) :
+`Jotoliko — exercice d'exploitation` ([job 116384988104](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723922925/job/116384988104)) :
 sauvegarde de la base **et** du volume de preuves, deux exécutions successives
 (pointeur `latest` et rétention), restauration dans une base isolée, purge des
 preuves avec refus sans date limite.
@@ -488,16 +488,17 @@ Mesures publiées par cet exercice (annotations `RTO-MESURÉ` et `PORTÉE-DE-LA-
 | Mesure | Valeur observée |
 | --- | --- |
 | Sauvegarde complète (base + volume, ~0,1 Mio) | 97–165 ms selon l'exécution, relue et vérifiée par empreinte |
-| Restauration « base + volume » — exercice d'exploitation | **150 ms** (base 147 ms, extraction du volume 3 ms) |
-| Restauration « base + volume » — test système | **407 ms** (base 404 ms, extraction du volume 3 ms) |
+| Restauration « base + volume » — exercice d'exploitation | **310 ms** (base 306 ms, extraction du volume 3 ms) |
+| Restauration « base + volume » — test système | **238 ms** (base 234 ms, extraction du volume 3 ms) |
 | Restauration « base seule » | 169–1 669 ms selon l'exécution |
 | Preuves à empreinte conforme après restauration | 1 / 1 |
 | Preuves référencées sans fichier si le volume n'est pas restauré | 1 (téléchargement impossible : `410`) |
 | Problèmes détectés | 0 |
 
 **Ces durées varient fortement d'une exécution à l'autre** : sur quatre exécutions
-de la même restauration « base + volume », les valeurs relevées sont 2 972 ms,
-226 ms, 255 ms, 162 ms, 407 ms et 150 ms — soit un facteur 20. Les lignes « base seule »
+de la même restauration « base + volume », les valeurs relevées sont 2 972, 226, 255,
+162, 407, 150, 310 et 238 ms — soit un facteur **20** pour une opération identique, sur
+la même machine et à quelques minutes d'intervalle. Les lignes « base seule »
 montrent la même dispersion (169 ms à 1 669 ms). La cause est le coût fixe de
 `CREATE DATABASE` et du démarrage de `pg_restore`, dominé par la charge de
 l'exécuteur, sur une base de quelques mégaoctets. C'est précisément pourquoi ces
@@ -850,9 +851,9 @@ gh api "repos/aydiarra-star/Jotoliko/check-runs/<job_id>/annotations"
 ```
 
 *Rapport établi sur les preuves exécutées par les exécutions CI
-[38723253967](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723253967),
-[38723253917](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723253917) et
-[38723253950](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723253950) de
+[38723922902](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723922902),
+[38723922925](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723922925) et
+[38723922862](https://github.com/aydiarra-star/Jotoliko/actions/runs/38723922862) de
 la branche `arena/dd76021f-jotoliko`, et sur les suites locales du même état de
 l'arbre. Les durées mesurées sont attachées à un état du code : **toute évolution
 ultérieure du code les invalide** et exige de les reproduire — les commandes de
