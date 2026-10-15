@@ -68,6 +68,7 @@ model Company {
   missions      Mission[]
   cashMovements CashMovement[]
   proofFiles    ProofFile[]
+  subscriptions Subscription[]
 
   @@map("companies")
 }
@@ -814,3 +815,127 @@ model ProofFile {
 // table parallèle, qui aurait immanquablement divergé.
 // ---------------------------------------------------------------------------
 
+
+
+// ---------------------------------------------------------------------------
+// Abonnements SaaS mensuels — ajout isolé, distinct des encaissements terrain
+// ---------------------------------------------------------------------------
+
+enum SubscriptionStatus {
+  PENDING_PAYMENT
+  ACTIVE
+  PAST_DUE
+  GRACE_PERIOD
+  SUSPENDED
+  CANCELLED
+  EXPIRED
+}
+
+enum SignupAttemptStatus {
+  PENDING_PAYMENT
+  ACTIVE
+  PAYMENT_FAILED
+  EXPIRED
+  CANCELLED
+}
+
+enum BillingPaymentStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  REFUNDED
+}
+
+model PlanPrice {
+  id            String   @id @default(uuid())
+  code          String
+  version       Int
+  currency      String   @default("XOF")
+  unitPriceXof  Int
+  effectiveFrom DateTime @default(now())
+  effectiveUntil DateTime?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  subscriptions Subscription[]
+  signupAttempts SignupAttempt[]
+
+  @@unique([code, version])
+  @@index([isActive, effectiveFrom, effectiveUntil])
+  @@map("plan_prices")
+}
+
+model Subscription {
+  id                     String             @id @default(uuid())
+  companyId              String
+  planPriceId            String
+  seatLimit              Int
+  status                 SubscriptionStatus @default(PENDING_PAYMENT)
+  currentPeriodStart      DateTime?
+  currentPeriodEnd        DateTime?
+  gracePeriodEndsAt       DateTime?
+  cancelAtPeriodEnd       Boolean            @default(false)
+  provider                String?
+  providerCustomerRef     String?
+  providerSubscriptionRef String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  planPrice     PlanPrice      @relation(fields: [planPriceId], references: [id])
+  billingPayments BillingPayment[]
+
+  @@index([companyId, status])
+  @@index([currentPeriodEnd])
+  @@index([provider, providerSubscriptionRef])
+  @@map("subscriptions")
+}
+
+model SignupAttempt {
+  id            String              @id @default(uuid())
+  companyName   String
+  companySlug   String
+  ownerEmail    String
+  ownerFirstName String
+  ownerLastName String
+  passwordHash  String
+  passwordSalt  String
+  seatCount     Int
+  planPriceId   String
+  status        SignupAttemptStatus @default(PENDING_PAYMENT)
+  expiresAt     DateTime
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  planPrice     PlanPrice      @relation(fields: [planPriceId], references: [id])
+  billingPayments BillingPayment[]
+
+  @@index([ownerEmail, status])
+  @@index([companySlug])
+  @@index([status, expiresAt])
+  @@map("signup_attempts")
+}
+
+model BillingPayment {
+  id                String               @id @default(uuid())
+  signupAttemptId   String?
+  subscriptionId    String?
+  provider          String
+  providerReference String?
+  amountXof         Int
+  currency          String               @default("XOF")
+  status            BillingPaymentStatus @default(PENDING)
+  idempotencyKey    String               @unique
+  rawEventHash      String?
+  paidAt            DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  signupAttempt SignupAttempt? @relation(fields: [signupAttemptId], references: [id], onDelete: SetNull)
+  subscription  Subscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerReference])
+  @@index([signupAttemptId, status])
+  @@index([subscriptionId, status])
+  @@map("billing_payments")
+}
