@@ -134,6 +134,17 @@ jobs:
         # une erreur de chemin ici ne se voit qu'au déploiement.
         run: test -f dist/apps/api/src/main.js
 
+      # Contrôle HTTP hors ligne : démarre réellement l'API construite et
+      # vérifie les couches indépendantes de la base (gardes d'authentification,
+      # validation, limitation de débit, CORS, en-têtes, corrélation, erreurs).
+      # Il complète la suite « bout en bout » sans la remplacer : celle-ci exige
+      # PostgreSQL et vérifie le métier.
+      - name: Contrôle HTTP hors ligne
+        # Le job s'exécute par défaut dans apps/api : ce contrôle part de la
+        # racine, où vit le script, et démarre l'API construite.
+        working-directory: ${{ github.workspace }}
+        run: npm run api:smoke
+
       - name: Audit des dépendances (informatif)
         # Les avis de sécurité transitifs sont signalés sans bloquer la CI :
         # une remédiation peut exiger une montée de version majeure.
