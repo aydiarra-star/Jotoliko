@@ -52,7 +52,7 @@ CREATE TYPE "NotificationChannel" AS ENUM ('IN_APP', 'WHATSAPP', 'SMS', 'EMAIL')
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE "roles" (
-  "id"          TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"          TEXT NOT NULL,
   "code"        TEXT NOT NULL,
   "label"       TEXT NOT NULL,
   "description" TEXT,
@@ -62,7 +62,7 @@ CREATE TABLE "roles" (
 CREATE UNIQUE INDEX "roles_code_key" ON "roles" ("code");
 
 CREATE TABLE "permissions" (
-  "id"    TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"    TEXT NOT NULL,
   "code"  TEXT NOT NULL,
   "label" TEXT NOT NULL,
   CONSTRAINT "permissions_pkey" PRIMARY KEY ("id")
@@ -71,7 +71,7 @@ CREATE TABLE "permissions" (
 CREATE UNIQUE INDEX "permissions_code_key" ON "permissions" ("code");
 
 CREATE TABLE "memberships" (
-  "id"        TEXT         NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"        TEXT         NOT NULL,
   "userId"    TEXT         NOT NULL,
   "companyId" TEXT         NOT NULL,
   "roleId"    TEXT         NOT NULL,
@@ -103,7 +103,7 @@ CREATE TABLE "role_permissions" (
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE "zones" (
-  "id"        TEXT         NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"        TEXT         NOT NULL,
   "companyId" TEXT         NOT NULL,
   "name"      TEXT         NOT NULL,
   "city"      TEXT,
@@ -119,7 +119,7 @@ CREATE UNIQUE INDEX "zones_companyId_name_key" ON "zones" ("companyId", "name");
 CREATE INDEX "zones_companyId_idx" ON "zones" ("companyId");
 
 CREATE TABLE "vehicles" (
-  "id"        TEXT         NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"        TEXT         NOT NULL,
   "companyId" TEXT         NOT NULL,
   "plate"     TEXT,
   "label"     TEXT         NOT NULL,
@@ -134,7 +134,7 @@ CREATE TABLE "vehicles" (
 CREATE INDEX "vehicles_companyId_idx" ON "vehicles" ("companyId");
 
 CREATE TABLE "drivers" (
-  "id"        TEXT         NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"        TEXT         NOT NULL,
   "companyId" TEXT         NOT NULL,
   "userId"    TEXT,
   "vehicleId" TEXT,
@@ -160,7 +160,7 @@ CREATE UNIQUE INDEX "drivers_companyId_code_key" ON "drivers" ("companyId", "cod
 CREATE INDEX "drivers_companyId_isActive_idx" ON "drivers" ("companyId", "isActive");
 
 CREATE TABLE "driver_positions" (
-  "id"         TEXT         NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"         TEXT         NOT NULL,
   "driverId"   TEXT         NOT NULL,
   "lat"        DOUBLE PRECISION NOT NULL,
   "lng"        DOUBLE PRECISION NOT NULL,
@@ -177,7 +177,7 @@ CREATE INDEX "driver_positions_driverId_recordedAt_idx"
   ON "driver_positions" ("driverId", "recordedAt");
 
 CREATE TABLE "customers" (
-  "id"          TEXT         NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"          TEXT         NOT NULL,
   "companyId"   TEXT         NOT NULL,
   "name"        TEXT         NOT NULL,
   "phone"       TEXT         NOT NULL,
@@ -201,7 +201,7 @@ CREATE TABLE "customers" (
 CREATE INDEX "customers_companyId_phone_idx" ON "customers" ("companyId", "phone");
 
 CREATE TABLE "products" (
-  "id"        TEXT         NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"        TEXT         NOT NULL,
   "companyId" TEXT         NOT NULL,
   "sku"       TEXT,
   "name"      TEXT         NOT NULL,
@@ -218,7 +218,7 @@ CREATE INDEX "products_companyId_idx" ON "products" ("companyId");
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE "orders" (
-  "id"            TEXT          NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"            TEXT          NOT NULL,
   "companyId"     TEXT          NOT NULL,
   "customerId"    TEXT          NOT NULL,
   "zoneId"        TEXT,
@@ -251,7 +251,7 @@ CREATE INDEX "orders_companyId_status_idx" ON "orders" ("companyId", "status");
 CREATE INDEX "orders_companyId_createdAt_idx" ON "orders" ("companyId", "createdAt");
 
 CREATE TABLE "order_items" (
-  "id"        TEXT    NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"        TEXT    NOT NULL,
   "orderId"   TEXT    NOT NULL,
   "productId" TEXT,
   "label"     TEXT    NOT NULL,
@@ -269,7 +269,7 @@ CREATE TABLE "order_items" (
 CREATE INDEX "order_items_orderId_idx" ON "order_items" ("orderId");
 
 CREATE TABLE "order_status_history" (
-  "id"              TEXT          NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"              TEXT          NOT NULL,
   "orderId"         TEXT          NOT NULL,
   "fromStatus"      "OrderStatus",
   "toStatus"        "OrderStatus" NOT NULL,
@@ -289,7 +289,7 @@ CREATE INDEX "order_status_history_orderId_createdAt_idx"
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE "deliveries" (
-  "id"            TEXT             NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"            TEXT             NOT NULL,
   "companyId"     TEXT             NOT NULL,
   "orderId"       TEXT             NOT NULL,
   "driverId"      TEXT,
@@ -321,7 +321,7 @@ CREATE INDEX "deliveries_companyId_status_idx" ON "deliveries" ("companyId", "st
 CREATE INDEX "deliveries_driverId_status_idx" ON "deliveries" ("driverId", "status");
 
 CREATE TABLE "proofs" (
-  "id"            TEXT         NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"            TEXT         NOT NULL,
   "deliveryId"    TEXT         NOT NULL,
   "type"          "ProofType"  NOT NULL DEFAULT 'PHOTO',
   "fileUrl"       TEXT,
@@ -347,7 +347,7 @@ CREATE INDEX "proofs_deliveryId_idx" ON "proofs" ("deliveryId");
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE "settlements" (
-  "id"                TEXT               NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"                TEXT               NOT NULL,
   "companyId"         TEXT               NOT NULL,
   "driverId"          TEXT               NOT NULL,
   "reference"         TEXT               NOT NULL,
@@ -375,7 +375,7 @@ CREATE INDEX "settlements_companyId_status_idx" ON "settlements" ("companyId", "
 CREATE INDEX "settlements_driverId_status_idx" ON "settlements" ("driverId", "status");
 
 CREATE TABLE "payments" (
-  "id"           TEXT            NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"           TEXT            NOT NULL,
   "companyId"    TEXT            NOT NULL,
   "orderId"      TEXT            NOT NULL,
   "deliveryId"   TEXT,
@@ -412,7 +412,7 @@ CREATE INDEX "payments_driverId_idx" ON "payments" ("driverId");
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE "notifications" (
-  "id"        TEXT                  NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"        TEXT                  NOT NULL,
   "companyId" TEXT                  NOT NULL,
   "userId"    TEXT,
   "channel"   "NotificationChannel" NOT NULL DEFAULT 'IN_APP',
@@ -433,7 +433,7 @@ CREATE INDEX "notifications_companyId_userId_readAt_idx"
   ON "notifications" ("companyId", "userId", "readAt");
 
 CREATE TABLE "settings" (
-  "id"                    TEXT         NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"                    TEXT         NOT NULL,
   "companyId"             TEXT         NOT NULL,
   "cashVarianceTolerance" INTEGER      NOT NULL DEFAULT 500,
   "proofRequired"         BOOLEAN      NOT NULL DEFAULT true,

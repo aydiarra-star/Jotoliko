@@ -43,7 +43,7 @@ CREATE TYPE "CashMovementType" AS ENUM (
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE "companies" (
-  "id"        TEXT         NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"        TEXT         NOT NULL,
   "name"      TEXT         NOT NULL,
   "slug"      TEXT         NOT NULL,
   "country"   TEXT         NOT NULL DEFAULT 'SN',
@@ -59,7 +59,7 @@ CREATE TABLE "companies" (
 CREATE UNIQUE INDEX "companies_slug_key" ON "companies" ("slug");
 
 CREATE TABLE "users" (
-  "id"           TEXT         NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"           TEXT         NOT NULL,
   "email"        TEXT         NOT NULL,
   "phone"        TEXT,
   "passwordHash" TEXT         NOT NULL,
@@ -81,7 +81,7 @@ CREATE UNIQUE INDEX "users_email_key" ON "users" ("email");
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE "missions" (
-  "id"                 TEXT          NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"                 TEXT          NOT NULL,
   "companyId"          TEXT          NOT NULL,
   "reference"          TEXT          NOT NULL,
   "orderId"            TEXT,
@@ -136,7 +136,7 @@ CREATE INDEX "missions_companyId_createdAt_idx" ON "missions" ("companyId", "cre
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE "cash_movements" (
-  "id"             TEXT               NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"             TEXT               NOT NULL,
   "companyId"      TEXT               NOT NULL,
   "missionId"      TEXT               NOT NULL,
   "driverId"       TEXT,
@@ -172,7 +172,7 @@ CREATE INDEX "cash_movements_companyId_driverId_createdAt_idx"
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE "mutation_keys" (
-  "id"             TEXT         NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"             TEXT         NOT NULL,
   "companyId"      TEXT         NOT NULL,
   "operation"      TEXT         NOT NULL,
   "idempotencyKey" TEXT         NOT NULL,
@@ -194,7 +194,7 @@ CREATE INDEX "mutation_keys_companyId_createdAt_idx" ON "mutation_keys" ("compan
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE "audit_logs" (
-  "id"         TEXT         NOT NULL DEFAULT gen_random_uuid()::text,
+  "id"         TEXT         NOT NULL,
   "companyId"  TEXT,
   "userId"     TEXT,
   "action"     TEXT         NOT NULL,

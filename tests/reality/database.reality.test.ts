@@ -56,14 +56,17 @@ afterAll(async () => {
 // Jeu de données minimal
 // ---------------------------------------------------------------------------
 async function seedCompany(slug: string): Promise<{ companyId: string; userId: string }> {
+  // Les identifiants sont générés côté application : le schéma Prisma ne
+  // déclare aucune valeur par défaut en base pour les clés primaires.
   const company = await client.query<{ id: string }>(
-    `INSERT INTO companies (name, slug, "updatedAt") VALUES ($1, $2, CURRENT_TIMESTAMP) RETURNING id`,
+    `INSERT INTO companies (id, name, slug, "updatedAt")
+     VALUES (gen_random_uuid()::text, $1, $2, CURRENT_TIMESTAMP) RETURNING id`,
     [`Entreprise ${slug}`, slug]
   );
   const companyId = company.rows[0]!.id;
   const user = await client.query<{ id: string }>(
-    `INSERT INTO users (email, "passwordHash", "passwordSalt", "firstName", "lastName", "updatedAt")
-     VALUES ($1, 'x', 'sel-de-test', 'Test', 'User', CURRENT_TIMESTAMP) RETURNING id`,
+    `INSERT INTO users (id, email, "passwordHash", "passwordSalt", "firstName", "lastName", "updatedAt")
+     VALUES (gen_random_uuid()::text, $1, 'x', 'sel-de-test', 'Test', 'User', CURRENT_TIMESTAMP) RETURNING id`,
     [`${slug}@example.test`]
   );
   return { companyId, userId: user.rows[0]!.id };
@@ -75,8 +78,8 @@ async function seedMission(
   over: { assignedUserId?: string; expectedAmount?: number } = {}
 ): Promise<string> {
   const res = await client.query<{ id: string }>(
-    `INSERT INTO missions ("companyId", reference, "clientName", status, "expectedAmount", "assignedUserId", "updatedAt")
-     VALUES ($1, $2, 'Client test', 'ARRIVE', $3, $4, CURRENT_TIMESTAMP) RETURNING id`,
+    `INSERT INTO missions (id, "companyId", reference, "clientName", status, "expectedAmount", "assignedUserId", "updatedAt")
+     VALUES (gen_random_uuid()::text, $1, $2, 'Client test', 'ARRIVE', $3, $4, CURRENT_TIMESTAMP) RETURNING id`,
     [companyId, reference, over.expectedAmount ?? 10_000, over.assignedUserId ?? null]
   );
   return res.rows[0]!.id;
@@ -280,8 +283,8 @@ describe("#7 Idempotence de l'encaissement", () => {
 
     const insertMovement = () =>
       client.query(
-        `INSERT INTO cash_movements ("companyId", "missionId", type, amount, "actorUserId", "idempotencyKey", "requestHash")
-         VALUES ($1, $2, 'ENCAISSEMENT', 5000, $3, 'cle-unique-001', 'hash-1')`,
+        `INSERT INTO cash_movements (id, "companyId", "missionId", type, amount, "actorUserId", "idempotencyKey", "requestHash")
+         VALUES (gen_random_uuid()::text, $1, $2, 'ENCAISSEMENT', 5000, $3, 'cle-unique-001', 'hash-1')`,
         [a.companyId, mission, a.userId]
       );
 
@@ -307,8 +310,8 @@ describe("#7 Idempotence de l'encaissement", () => {
       [b.companyId, missionB, b.userId],
     ]) {
       await client.query(
-        `INSERT INTO cash_movements ("companyId", "missionId", type, amount, "actorUserId", "idempotencyKey", "requestHash")
-         VALUES ($1, $2, 'ENCAISSEMENT', 1000, $3, 'cle-partagee', 'hash')`,
+        `INSERT INTO cash_movements (id, "companyId", "missionId", type, amount, "actorUserId", "idempotencyKey", "requestHash")
+         VALUES (gen_random_uuid()::text, $1, $2, 'ENCAISSEMENT', 1000, $3, 'cle-partagee', 'hash')`,
         [companyId, missionId, userId]
       );
     }
@@ -320,21 +323,21 @@ describe("#7 Idempotence de l'encaissement", () => {
     await truncateAll();
     const a = await seedCompany("alpha");
     await client.query(
-      `INSERT INTO mutation_keys ("companyId", operation, "idempotencyKey", "requestHash", "resultJson")
-       VALUES ($1, 'PAYMENT:m-1', 'k-1', 'h', '{}')`,
+      `INSERT INTO mutation_keys (id, "companyId", operation, "idempotencyKey", "requestHash", "resultJson")
+       VALUES (gen_random_uuid()::text, $1, 'PAYMENT:m-1', 'k-1', 'h', '{}')`,
       [a.companyId]
     );
     // Même clé, autre opération : autorisé (espaces de nommage distincts).
     await client.query(
-      `INSERT INTO mutation_keys ("companyId", operation, "idempotencyKey", "requestHash", "resultJson")
-       VALUES ($1, 'REMITTANCE:m-1', 'k-1', 'h', '{}')`,
+      `INSERT INTO mutation_keys (id, "companyId", operation, "idempotencyKey", "requestHash", "resultJson")
+       VALUES (gen_random_uuid()::text, $1, 'REMITTANCE:m-1', 'k-1', 'h', '{}')`,
       [a.companyId]
     );
     // Même clé, même opération : refusé.
     await expect(
       client.query(
-        `INSERT INTO mutation_keys ("companyId", operation, "idempotencyKey", "requestHash", "resultJson")
-         VALUES ($1, 'PAYMENT:m-1', 'k-1', 'h', '{}')`,
+        `INSERT INTO mutation_keys (id, "companyId", operation, "idempotencyKey", "requestHash", "resultJson")
+         VALUES (gen_random_uuid()::text, $1, 'PAYMENT:m-1', 'k-1', 'h', '{}')`,
         [a.companyId]
       )
     ).rejects.toSatisfy((e) => isPgError(e, PG.UNIQUE_VIOLATION));
@@ -371,8 +374,8 @@ describe("#13 Concurrence et intégrité des montants", () => {
     const mission = await seedMission(a.companyId, "CMD-ZERO");
     await expect(
       client.query(
-        `INSERT INTO cash_movements ("companyId", "missionId", type, amount, "actorUserId", "idempotencyKey", "requestHash")
-         VALUES ($1, $2, 'REMISE', 0, $3, 'k-zero', 'h')`,
+        `INSERT INTO cash_movements (id, "companyId", "missionId", type, amount, "actorUserId", "idempotencyKey", "requestHash")
+         VALUES (gen_random_uuid()::text, $1, $2, 'REMISE', 0, $3, 'k-zero', 'h')`,
         [a.companyId, mission, a.userId]
       )
     ).rejects.toSatisfy((e) => isPgError(e, PG.CHECK_VIOLATION));
@@ -398,8 +401,8 @@ describe("#13 Concurrence et intégrité des montants", () => {
     await expectSqlFailure(`
       BEGIN;
       UPDATE missions SET "collectedAmount" = "collectedAmount" + 5000 WHERE id = '${mission}';
-      INSERT INTO cash_movements ("companyId", "missionId", type, amount, "actorUserId", "idempotencyKey", "requestHash")
-        VALUES ('${a.companyId}', '${mission}', 'ENCAISSEMENT', 5000, '${a.userId}', 'k-tx', 'h');
+      INSERT INTO cash_movements (id, "companyId", "missionId", type, amount, "actorUserId", "idempotencyKey", "requestHash")
+        VALUES (gen_random_uuid()::text, '${a.companyId}', '${mission}', 'ENCAISSEMENT', 5000, '${a.userId}', 'k-tx', 'h');
       -- Cette ligne viole la contrainte : tout le bloc doit être annulé.
       UPDATE missions SET "remittedAmount" = "remittedAmount" + 999999 WHERE id = '${mission}';
       COMMIT;
@@ -431,8 +434,8 @@ describe("#13 Concurrence et intégrité des montants", () => {
 
       const insert = (c: SqlClient) =>
         c.query(
-          `INSERT INTO cash_movements ("companyId", "missionId", type, amount, "actorUserId", "idempotencyKey", "requestHash")
-           VALUES ($1, $2, 'ENCAISSEMENT', 5000, $3, 'cle-concurrente', 'h')`,
+          `INSERT INTO cash_movements (id, "companyId", "missionId", type, amount, "actorUserId", "idempotencyKey", "requestHash")
+           VALUES (gen_random_uuid()::text, $1, $2, 'ENCAISSEMENT', 5000, $3, 'cle-concurrente', 'h')`,
           [a.companyId, mission, a.userId]
         );
 
@@ -468,8 +471,8 @@ describe("#11 Journal d'audit", () => {
     await client.exec(`
       BEGIN;
       UPDATE missions SET status = 'LIVREE', "proofId" = 'proof-1' WHERE id = '${mission}';
-      INSERT INTO audit_logs ("companyId", "userId", action, "entityType", "entityId", before, after, source, "requestId")
-        VALUES ('${a.companyId}', '${a.userId}', 'MISSION_TRANSITION', 'Mission', '${mission}',
+      INSERT INTO audit_logs (id, "companyId", "userId", action, "entityType", "entityId", before, after, source, "requestId")
+        VALUES (gen_random_uuid()::text, '${a.companyId}', '${a.userId}', 'MISSION_TRANSITION', 'Mission', '${mission}',
                 '"ARRIVE"'::jsonb, '"LIVREE"'::jsonb, 'API', 'req-1');
       COMMIT;
     `);
@@ -510,8 +513,8 @@ describe("#11 Journal d'audit", () => {
     const a = await seedCompany("alpha");
     const mission = await seedMission(a.companyId, "CMD-AUDIT-RETENTION");
     await client.query(
-      `INSERT INTO audit_logs ("companyId", "userId", action, "entityType", "entityId", source)
-       VALUES ($1, $2, 'PAYMENT_COLLECTED', 'Mission', $3, 'API')`,
+      `INSERT INTO audit_logs (id, "companyId", "userId", action, "entityType", "entityId", source)
+       VALUES (gen_random_uuid()::text, $1, $2, 'PAYMENT_COLLECTED', 'Mission', $3, 'API')`,
       [a.companyId, a.userId, mission]
     );
 
@@ -562,8 +565,8 @@ describe("#16 Parcours de livraison complet", () => {
     await client.exec(`
       BEGIN;
       UPDATE missions SET status = 'LIVREE', "proofId" = 'proof-e2e' WHERE id = '${mission}';
-      INSERT INTO audit_logs ("companyId", "userId", action, "entityType", "entityId", before, after, source)
-        VALUES ('${a.companyId}', '${a.userId}', 'MISSION_TRANSITION', 'Mission', '${mission}',
+      INSERT INTO audit_logs (id, "companyId", "userId", action, "entityType", "entityId", before, after, source)
+        VALUES (gen_random_uuid()::text, '${a.companyId}', '${a.userId}', 'MISSION_TRANSITION', 'Mission', '${mission}',
                 '"ARRIVE"'::jsonb, '"LIVREE"'::jsonb, 'API');
       COMMIT;
     `);
@@ -573,8 +576,8 @@ describe("#16 Parcours de livraison complet", () => {
     await client.exec(`
       BEGIN;
       UPDATE missions SET "collectedAmount" = "collectedAmount" + 12000 WHERE id = '${mission}';
-      INSERT INTO cash_movements ("companyId", "missionId", type, amount, "actorUserId", "idempotencyKey", "requestHash")
-        VALUES ('${a.companyId}', '${mission}', 'ENCAISSEMENT', 12000, '${a.userId}', 'e2e-collect', 'h');
+      INSERT INTO cash_movements (id, "companyId", "missionId", type, amount, "actorUserId", "idempotencyKey", "requestHash")
+        VALUES (gen_random_uuid()::text, '${a.companyId}', '${mission}', 'ENCAISSEMENT', 12000, '${a.userId}', 'e2e-collect', 'h');
       COMMIT;
     `);
     let state = await status();
@@ -584,8 +587,8 @@ describe("#16 Parcours de livraison complet", () => {
     await client.exec(`
       BEGIN;
       UPDATE missions SET "remittedAmount" = "remittedAmount" + 11000 WHERE id = '${mission}';
-      INSERT INTO cash_movements ("companyId", "missionId", type, amount, "actorUserId", "idempotencyKey", "requestHash")
-        VALUES ('${a.companyId}', '${mission}', 'REMISE', 11000, '${a.userId}', 'e2e-remit', 'h');
+      INSERT INTO cash_movements (id, "companyId", "missionId", type, amount, "actorUserId", "idempotencyKey", "requestHash")
+        VALUES (gen_random_uuid()::text, '${a.companyId}', '${mission}', 'REMISE', 11000, '${a.userId}', 'e2e-remit', 'h');
       COMMIT;
     `);
     state = await status();
