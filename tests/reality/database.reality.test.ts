@@ -6,29 +6,37 @@
 // de prouver que « l'entreprise A ne peut pas lire les missions de B » : un test
 // de règle applicative ne prouve rien sur la requête réellement exécutée.
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PGliteClient, PgClient, PG, isPgError, resetSchema, type SqlClient } from "./sql-client";
 
 const REPO_ROOT = join(__dirname, "..", "..");
-const MIGRATION_PATH = join(
-  REPO_ROOT,
-  "prisma/migrations/20261015000000_init_operational_core/migration.sql"
-);
+const MIGRATIONS_DIR = join(REPO_ROOT, "prisma/migrations");
 const SCHEMA_PATH = join(REPO_ROOT, "prisma/schema.prisma");
 
-const MIGRATION_SQL = readFileSync(MIGRATION_PATH, "utf8");
+/** Toutes les migrations, dans l'ordre lexicographique (donc chronologique). */
+const MIGRATION_FILES = readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => join(MIGRATIONS_DIR, entry.name, "migration.sql"))
+  .sort();
+
+const MIGRATIONS_SQL = MIGRATION_FILES.map((file) => readFileSync(file, "utf8"));
+const MIGRATION_SQL = MIGRATIONS_SQL.join("\n");
+
 const SCHEMA_SOURCE = readFileSync(SCHEMA_PATH, "utf8");
 
-/** Tables que cette migration est censée créer. */
-const MIGRATED_TABLES = [
-  "companies",
-  "users",
-  "missions",
-  "cash_movements",
-  "mutation_keys",
-  "audit_logs",
+/**
+ * Toutes les tables du schéma canonique. Une table déclarée mais non migrée est
+ * exactement le défaut d'origine : le schéma documenté et la base ne décrivaient
+ * pas le même produit.
+ */
+const EXPECTED_TABLES = [
+  "audit_logs", "cash_movements", "companies", "customers", "deliveries",
+  "driver_positions", "drivers", "memberships", "missions", "mutation_keys",
+  "notifications", "order_items", "order_status_history", "orders",
+  "permissions", "payments", "products", "proofs", "role_permissions", "roles",
+  "settings", "settlements", "users", "vehicles", "zones",
 ] as const;
 
 let client: SqlClient;
@@ -118,22 +126,25 @@ describe("#12 Migration sur base propre", () => {
         WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name`
     );
     const present = res.rows.map((r) => r.table_name);
-    for (const table of MIGRATED_TABLES) expect(present).toContain(table);
+    for (const table of EXPECTED_TABLES) expect(present, `table ${table} absente`).toContain(table);
   });
 
-  it("crée les types énumérés", async () => {
+  it("crée tous les types énumérés déclarés dans le schéma", async () => {
     const res = await client.query<{ typname: string }>(
       `SELECT t.typname FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
         WHERE n.nspname = 'public' AND t.typtype = 'e' ORDER BY t.typname`
     );
     const enums = res.rows.map((r) => r.typname);
-    for (const e of ["MissionStatus", "TruthStatus", "CashMovementType"]) expect(enums).toContain(e);
+
+    const declared = [...SCHEMA_SOURCE.matchAll(/enum\s+(\w+)\s*\{/g)].map((m) => m[1]!);
+    expect(declared.length).toBeGreaterThan(0);
+    for (const name of declared) expect(enums, `énumération ${name} absente`).toContain(name);
   });
 
   it("est idempotente dans sa structure : rejouer échoue proprement au lieu de corrompre", async () => {
-    // Rejouer la migration sur un schéma déjà peuplé doit lever une erreur
+    // Rejouer les migrations sur un schéma déjà peuplé doit lever une erreur
     // explicite (type déjà existant), jamais réussir à moitié en silence.
-    await expect(client.exec(MIGRATION_SQL)).rejects.toBeTruthy();
+    await expect(client.exec(MIGRATIONS_SQL[0]!)).rejects.toBeTruthy();
   });
 
   it("ne dérive pas du schéma Prisma : chaque colonne déclarée existe en base", async () => {
@@ -158,8 +169,7 @@ describe("#12 Migration sur base propre", () => {
       const mapMatch = body.match(/@@map\("([^"]+)"\)/);
       const table = mapMatch ? mapMatch[1]! : modelName;
 
-      // On ne vérifie que les modèles réellement couverts par cette migration.
-      if (!(MIGRATED_TABLES as readonly string[]).includes(table)) continue;
+      if (!(EXPECTED_TABLES as readonly string[]).includes(table)) continue;
 
       const columns = byTable.get(table);
       expect(columns, `table ${table} absente`).toBeDefined();
@@ -176,7 +186,7 @@ describe("#12 Migration sur base propre", () => {
       }
     }
 
-    expect(checkedModels).toBe(MIGRATED_TABLES.length);
+    expect(checkedModels).toBe(EXPECTED_TABLES.length);
   });
 });
 
