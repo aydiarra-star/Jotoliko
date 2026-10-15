@@ -132,6 +132,7 @@ bornait à 64 : toute deuxième page renvoyait `400`).
 | `a335edb` | Deux attentes fausses de la suite système corrigées, non contournées |
 | `382fd23` | Mesures de restauration publiées depuis un fichier, et non depuis le journal — la restitution affichait sinon « aucune mesure » alors que la restauration avait été mesurée |
 | `8b43028` | Un job vert ne porte plus d'annotation d'échec : l'audit des dépendances publie son constat au bon niveau (§ 5.6) |
+| `1440a20` | **L'exercice d'exploitation ne purgeait rien** (§ 4.6) : trois preuves d'âges différents, et vérification d'effets observables plutôt que d'une sortie de script |
 | `f76e90c` | **Défaut contredisant sa propre règle** (§ 4.5) : délai de la sonde porté de 5 s à 12 s pour dépasser le budget interne de l'API, vivacité retenue comme discriminant entre « dégradé » et « injoignable », et test système éprouvant le comportement **par défaut** au lieu d'un délai ajusté |
 
 ---
@@ -247,6 +248,31 @@ la raison du silence de la disponibilité ; si même la vivacité est muette, l'
 reste `INDISPONIBLE`, où le redémarrage est le bon geste. Le test système n'ajuste
 plus aucun délai : il éprouve exactement ce que l'astreinte exécutera.
 
+### 4.6 L'exercice d'exploitation prouvait la purge sans rien purger
+
+**Symptôme, lu dans les annotations du job vert.** `PURGE-EXECUTION :: 2030-01-01 —
+rien à purger ; 1 preuve(s) active(s) non touchée(s)`.
+
+**Cause.** L'exercice ne créait qu'**une** preuve, active. Or la purge ne touche que
+les preuves **déjà supprimées logiquement** : elle n'avait donc rien à supprimer, et
+la date limite fixée dans le futur (2030) masquait le problème. L'exercice
+démontrait le refus de purger sans date — utile — mais rien de la suppression
+elle-même.
+
+**Pourquoi c'est un défaut et pas un détail.** C'est exactement le piège que ce
+rapport combat : une vérification **verte** qui ne vérifie rien. Le jour où la purge
+aurait cessé de fonctionner (chemin, permission, format de date), l'exercice
+quotidien serait resté vert en affichant « rien à purger ».
+
+**Correction.** L'exercice pose trois preuves — une active, une supprimée depuis
+400 jours, une supprimée le jour même — calcule la date limite à l'exécution (200
+jours avant), puis vérifie des **effets observables** : le fichier éligible a
+disparu, les deux autres sont intacts, et les trois lignes de `proof_files` sont
+conservées. Constate publié dans les annotations du job vert :
+
+> `PURGE :: date limite 2026-03-29 — 1 fichier supprimé, 1 preuve récemment supprimée
+> et 1 preuve active intactes, 3 ligne(s) de traçabilité conservée(s)`
+
 ---
 
 ## 5. Tests exécutés — quoi, où, résultat
@@ -254,8 +280,8 @@ plus aucun délai : il éprouve exactement ce que l'astreinte exécutera.
 ### 5.1 Bout en bout, sur PostgreSQL 16 réel (CI)
 
 Job « Tests HTTP de bout en bout (API + PostgreSQL 16) » —
-[run 38722270551 / job 116379488992](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722270551/job/116379488992)
-— **pass**, 1 min 19.
+[run 38722779519 / job 116381175915](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722779519/job/116381175915)
+— **pass**, 1 min 20.
 
 Le serveur est démarré **tel qu'il est livré** et interrogé par de vraies requêtes
 HTTP : chaîne garde d'authentification → garde de permissions → validation →
@@ -283,15 +309,17 @@ Bilan publié par la CI elle-même (annotation `E2E-BILAN`, vérifiable par API)
 
 | Vérification | Résultat | Durée | Lien |
 | --- | --- | --- | --- |
-| API (Prisma, migrations, build) | ✅ pass | 1 min 26 | [job 116379488592](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722270551/job/116379488592) |
-| Tests HTTP de bout en bout (API + PostgreSQL 16) | ✅ pass | 1 min 19 | [job 116379488992](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722270551/job/116379488992) |
-| Sauvegarde, restauration mesurée et purge (base de test) | ✅ pass | 1 min 5 | [job 116379471693](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722270552/job/116379471693) |
-| Reality tests sur PostgreSQL 16 réel | ✅ pass | 42 s | [job 116379471580](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722270493/job/116379471580) |
-| Site + invariants + PostgreSQL embarqué | ✅ pass | 59 s | [job 116379471760](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722270493/job/116379471760) |
+| API (Prisma, migrations, build) | ✅ pass | 1 min 21 | [job 116381176217](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722779519/job/116381176217) |
+| Tests HTTP de bout en bout (API + PostgreSQL 16) | ✅ pass | 1 min 20 | [job 116381175915](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722779519/job/116381175915) |
+| Sauvegarde, restauration mesurée et purge (base de test) | ✅ pass | 51 s | [job 116381174860](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722779274/job/116381174860) |
+| Reality tests sur PostgreSQL 16 réel | ✅ pass | 40 s | [job 116381175522](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722779360/job/116381175522) |
+| Site + invariants + PostgreSQL embarqué | ✅ pass | 1 min 2 | [job 116381175306](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722779360/job/116381175306) |
 
-Ces cinq vérifications portent **toutes** le niveau `success` et **aucune annotation
-de niveau `failure`** — vérifié sur les annotations elles-mêmes, par l'API GitHub, et
-non sur la couleur du job. Les seules annotations `warning` restantes sont les
+Ces cinq vérifications portent **toutes** le niveau `success`, et les cinq jobs
+comptent **zéro annotation de niveau `failure`** — vérifié en interrogeant
+`/check-runs/<job>/annotations` pour chacun des cinq, et non en se fiant à la couleur
+du job. Une annotation d'échec résiduelle subsistait auparavant sur le job API
+(§ 5.6) ; elle a disparu. Les seules annotations `warning` restantes sont les
 rappels d'outillage (dépréciation de Node 20 par des actions tierces) et le constat
 d'audit des dépendances, publié au niveau qui lui revient (§ 5.6). Les constats
 d'exploitation sont publiés en `notice` : durée de restauration, risque « base
@@ -448,7 +476,7 @@ ligne de preuve, la caisse et le journal d'audit.
 
 **(b) Chaîne opérationnelle** — les scripts qui seront réellement planifiés sont
 exécutés de bout en bout, sur une base de test, par l'exercice
-`Jotoliko — exercice d'exploitation` ([job 116379471693](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722270552/job/116379471693)) :
+`Jotoliko — exercice d'exploitation` ([job 116381174860](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722779274/job/116381174860)) :
 sauvegarde de la base **et** du volume de preuves, deux exécutions successives
 (pointeur `latest` et rétention), restauration dans une base isolée, purge des
 preuves avec refus sans date limite.
@@ -457,22 +485,24 @@ Mesures publiées par cet exercice (annotations `RTO-MESURÉ` et `PORTÉE-DE-LA-
 
 | Mesure | Valeur observée |
 | --- | --- |
-| Sauvegarde complète (base + volume, ~0,1 Mio) | 156–165 ms, relue et vérifiée par empreinte |
-| Restauration « base + volume » — test système | **226 ms** (base 222 ms, extraction du volume 4 ms) |
-| Restauration « base + volume » — exercice d'exploitation | **255 ms** (base 250 ms, extraction du volume 5 ms) |
-| Restauration « base seule » | 279–331 ms |
+| Sauvegarde complète (base + volume, ~0,1 Mio) | 97–165 ms selon l'exécution, relue et vérifiée par empreinte |
+| Restauration « base + volume » — exercice d'exploitation | **162 ms** (base 158 ms, extraction du volume 4 ms) |
+| Restauration « base + volume » — test système | **407 ms** (base 404 ms, extraction du volume 3 ms) |
+| Restauration « base seule » | 169–1 669 ms selon l'exécution |
 | Preuves à empreinte conforme après restauration | 1 / 1 |
 | Preuves référencées sans fichier si le volume n'est pas restauré | 1 (téléchargement impossible : `410`) |
 | Problèmes détectés | 0 |
 
-**Ces durées varient d'un facteur dix d'une exécution à l'autre** : une première
-mesure de la même restauration donnait 2 972 ms, les deux dernières 226 ms et
-255 ms. La cause est le coût fixe de `CREATE DATABASE` et du démarrage de
-`pg_restore`, dominé par la charge de l'exécuteur, sur une base de quelques
-mégaoctets. C'est précisément pourquoi ces chiffres ne peuvent pas servir
-d'engagement : ils mesurent l'outillage, pas l'infrastructure. Une seule conclusion
-est solide : **la chaîne fonctionne et se mesure** — la durée, elle, est à
-re-mesurer sur l'environnement réel.
+**Ces durées varient fortement d'une exécution à l'autre** : sur quatre exécutions
+de la même restauration « base + volume », les valeurs relevées sont 2 972 ms,
+226 ms, 255 ms, 162 ms et 407 ms — soit un facteur 18. Les lignes « base seule »
+montrent la même dispersion (169 ms à 1 669 ms). La cause est le coût fixe de
+`CREATE DATABASE` et du démarrage de `pg_restore`, dominé par la charge de
+l'exécuteur, sur une base de quelques mégaoctets. C'est précisément pourquoi ces
+chiffres ne peuvent pas servir d'engagement : ils mesurent l'outillage et la
+machine, pas l'infrastructure. Deux conclusions seulement sont solides : **la chaîne
+fonctionne, et elle est mesurable** ; la durée, elle, doit être re-mesurée sur
+l'environnement réel avant toute annonce.
 
 **Ce que la sauvegarde couvre, et pourquoi les deux éléments sont obligatoires.**
 Les preuves vivent hors de la base : la base ne contient que l'empreinte et la clé
@@ -505,7 +535,7 @@ sauvegarde vérifiée prise juste avant. Procédure détaillée :
 | Objectif | Valeur | Hypothèses |
 | --- | --- | --- |
 | **RPO** | ≤ 24 h | sauvegarde **quotidienne**. Aucune journalisation continue (*WAL archiving*) : le RPO ne peut pas être inférieur à l'intervalle de sauvegarde |
-| **RTO technique** (base + volume) | 0,2–3 s sur base de test selon l'exécution | création de la base + `pg_restore` + extraction du volume, mesuré en CI (§ 7.2) |
+| **RTO technique** (base + volume) | 0,16 s à 3 s sur base de test selon l'exécution | création de la base + `pg_restore` + extraction du volume, mesuré en CI (§ 7.2) |
 | **RTO réel d'incident** | **non mesuré** | inclut détection, décision humaine, bascule et reprise de service |
 
 **Portée, énoncée pour éviter tout malentendu :** ces durées portent sur une base
@@ -782,6 +812,12 @@ publiés en annotations, lisibles par l'API GitHub :
 gh api "repos/aydiarra-star/Jotoliko/check-runs/<job_id>/annotations"
 ```
 
-*Rapport établi sur les preuves exécutées au commit `408ae9a` de la branche
-`arena/dd76021f-jotoliko`. Toute évolution ultérieure du code invalide les mesures
-citées ici : elles devront être reproduites.*
+*Rapport établi sur les preuves exécutées par les exécutions CI
+[38722779519](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722779519),
+[38722779274](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722779274) et
+[38722779360](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722779360) de
+la branche `arena/dd76021f-jotoliko`, et sur les suites locales du même état de
+l'arbre. Les durées mesurées sont attachées à un état du code : **toute évolution
+ultérieure du code les invalide** et exige de les reproduire — les commandes de
+contrôle sont données en annexe. Seules des modifications de documentation séparent
+ces exécutions de l'état livré.*
