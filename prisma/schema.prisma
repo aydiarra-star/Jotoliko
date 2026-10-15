@@ -931,8 +931,8 @@ model BillingPayment {
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
 
-  signupAttempt SignupAttempt? @relation(fields: [signupAttemptId], references: [id], onDelete: SetNull)
-  subscription  Subscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  signupAttempt SignupAttempt? @relation(fields: [signupAttemptId], references: [id], onDelete: Restrict)
+  subscription  Subscription?  @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
 
   @@unique([provider, providerReference])
   @@index([signupAttemptId, status])
