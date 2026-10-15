@@ -1,11 +1,27 @@
 import { Body, Controller, HttpCode, Ip, Post } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { AuthService, type LoginResult } from "./auth.service";
+import { SignupService } from "./signup.service";
 import { LoginDto } from "./dto/login.dto";
+import { SignupDto } from "./dto/signup.dto";
 
 @Controller("auth")
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly signup: SignupService
+  ) {}
+
+  /**
+   * Inscription professionnelle. Crée uniquement une tentative en attente ;
+   * ne crée ni entreprise, ni appartenance, ni abonnement actif.
+   */
+  @Post("signup")
+  @HttpCode(201)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  createSignup(@Body() body: SignupDto) {
+    return this.signup.create(body);
+  }
 
   /**
    * Connexion. La limitation est volontairement stricte : sans elle, un mot de
