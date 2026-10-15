@@ -212,9 +212,23 @@ httpSuite("Scripts d'exploitation : sauvegarde, restauration, rétention, superv
     // écrits : c'est le contrôle qu'un ordonnanceur doit pouvoir refaire.
     expect(await verifyBackupIntegrity(latest.directory, manifest)).toEqual({ ok: true, problems: [] });
 
-    // Le manifeste décrit la sauvegarde, pas une intention de sauvegarde.
-    expect(manifest.database.rows ?? null).not.toBeNull();
-    expect(readJson(join(backupRoot, "status.json")).ok).toBe(true);
+    // Le manifeste décrit la sauvegarde réellement écrite : noms d'artefacts,
+    // tailles en clair et sur le support. Sans chiffrement, les deux tailles
+    // doivent coïncider — un écart signalerait une transformation inattendue.
+    expect(manifest.artifacts.map((a: { name: string }) => a.name)).toEqual(["database.dump", "proofs.tar.gz"]);
+    for (const artifact of manifest.artifacts) {
+      expect(artifact.contentBytes).toBeGreaterThan(0);
+      expect(artifact.bytes).toBe(artifact.contentBytes);
+      expect(artifact.contentSha256).toBe(artifact.sha256);
+    }
+    // Au moins la preuve déposée par l'API est dans l'archive.
+    expect(manifest.counts.proofStorageBytes).toBeGreaterThan(0);
+
+    // L'état de l'exécution est écrit à côté du manifeste, sous le répertoire
+    // horodaté — pas à la racine du support.
+    const status = readJson(join(latest.directory, "status.json"));
+    expect(status.ok).toBe(true);
+    expect(status.durationMs).toBeGreaterThan(0);
   }, 90_000);
 
   suite("restauration mesurée : les preuves restaurées portent la même empreinte que la base", async () => {
@@ -403,9 +417,15 @@ httpSuite("Scripts d'exploitation : sauvegarde, restauration, rétention, superv
   }, 30_000);
 
   suite("les scripts refusent une configuration incomplète plutôt que de produire un faux succès", () => {
-    const sansUrl = runOps("backup.mjs", [], { BACKUP_DIR: sealedRoot, PROOF_STORAGE_DIR: proofStorageDir }, {
-      expectedRefusal: true,
-    });
+    // `DATABASE_URL` est vide **explicitement** : le job de CI en fournit une, et
+    // l'héritage silencieux rendait la configuration complète — le test échouait
+    // alors pour la mauvaise raison, sans que le refus soit éprouvé.
+    const sansUrl = runOps(
+      "backup.mjs",
+      [],
+      { BACKUP_DIR: sealedRoot, PROOF_STORAGE_DIR: proofStorageDir, DATABASE_URL: "" },
+      { expectedRefusal: true }
+    );
     expect(sansUrl.status).not.toBe(0);
     expect(`${sansUrl.stdout}${sansUrl.stderr}`).toMatch(/DATABASE_URL/);
 
@@ -413,7 +433,7 @@ httpSuite("Scripts d'exploitation : sauvegarde, restauration, rétention, superv
     const sansPreuves = runOps(
       "backup.mjs",
       [],
-      { DATABASE_URL: process.env.DATABASE_URL as string, BACKUP_DIR: sealedRoot },
+      { DATABASE_URL: process.env.DATABASE_URL as string, BACKUP_DIR: sealedRoot, PROOF_STORAGE_DIR: "" },
       { expectedRefusal: true }
     );
     expect(sansPreuves.status).not.toBe(0);

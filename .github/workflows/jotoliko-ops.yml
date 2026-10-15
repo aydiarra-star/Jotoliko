@@ -187,7 +187,8 @@ jobs:
           name: rapport-exercice-exploitation
           path: |
             ${{ env.BACKUP_DIR }}/restore-report.json
-            ${{ env.BACKUP_DIR }}/status.json
+            ${{ env.BACKUP_DIR }}/latest.json
             ${{ env.BACKUP_DIR }}/**/manifest.json
+            ${{ env.BACKUP_DIR }}/**/status.json
           if-no-files-found: ignore
           retention-days: 30
