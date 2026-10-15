@@ -6,6 +6,7 @@ import {
   hasPaidAccess,
   isProviderPaymentConfirmed,
   monthlyPriceFromEnvironment,
+  matchesExpectedCheckout,
   parseSeatCount,
 } from "./billing-core.mjs";
 
@@ -36,4 +37,27 @@ test("aucun paiement n'est reconnu sur le seul retour navigateur", () => {
   assert.equal(isProviderPaymentConfirmed({ providerStatus: "completed", amountXof: 12500, currency: "XOF", providerReference: "pay_1" }), false);
   assert.equal(isProviderPaymentConfirmed({ signatureVerified: true, providerStatus: "completed", amountXof: 12500, currency: "XOF", providerReference: "pay_1" }), true);
   assert.equal(isProviderPaymentConfirmed({ signatureVerified: true, providerStatus: "completed", amountXof: 100, currency: "EUR", providerReference: "pay_1" }), false);
+});
+
+
+test("le paiement doit correspondre au montant, à la devise et à la référence attendus", () => {
+  const event = {
+    providerStatus: "completed",
+    providerReference: "checkout_abc",
+    amountXof: 12500,
+    currency: "XOF",
+  };
+  const expected = {
+    event,
+    signatureVerified: true,
+    expectedAmountXof: 12500,
+    expectedCurrency: "XOF",
+    expectedReference: "checkout_abc",
+  };
+  assert.equal(matchesExpectedCheckout(expected), true);
+  assert.equal(matchesExpectedCheckout({ ...expected, expectedAmountXof: 15000 }), false);
+  assert.equal(matchesExpectedCheckout({ ...expected, expectedReference: "checkout_other" }), false);
+  assert.equal(matchesExpectedCheckout({ ...expected, event: { ...event, currency: "EUR" } }), false);
+  assert.equal(matchesExpectedCheckout({ ...expected, signatureVerified: false }), false);
+  assert.equal(matchesExpectedCheckout({ ...expected, event: { ...event, providerStatus: "pending" } }), false);
 });
