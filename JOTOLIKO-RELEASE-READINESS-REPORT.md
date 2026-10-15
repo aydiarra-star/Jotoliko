@@ -353,12 +353,12 @@ rendu non inscriptible.
 
 ### 5.6 Audit des dépendances — informatif, non bloquant
 
-L'étape `npm audit` est volontairement en `continue-on-error` (une remédiation peut
+L'audit des dépendances est volontairement **non bloquant** (une remédiation peut
 exiger une montée de version majeure). Résultat mesuré aujourd'hui :
 
 | Périmètre | Total | Gravités | Détail |
 | --- | --- | --- | --- |
-| API (`apps/api`) | 3 | 3 élevées, 0 critique | **toutes dans la CLI `prisma`** (dépendance de développement) via `@prisma/config` → `deepmerge-ts`. **`@prisma/client`, qui est la surface d'exécution, n'est pas visé.** |
+| API (`apps/api`) | 3 | 3 élevées, 0 critique | la dépendance **directe** est `prisma` (CLI, développement), qui entraîne `@prisma/config` → `deepmerge-ts`. **`@prisma/client`, qui est la surface d'exécution, n'est pas visé.** |
 | Racine (site + outillage) | 12 | 9 élevées, 3 modérées, 0 critique | dont `next` (modéré, **direct**), `tailwindcss` et `prisma` (élevés, directs), et des dépendances transitives d'outillage de construction (`braces`, `chokidar`, `fast-glob`, `micromatch`, `postcss`) |
 
 Le correctif proposé par l'outil pour les avis Prisma est une **montée de version
@@ -368,9 +368,18 @@ dans une préparation de pilote sans autorisation explicite. À noter : la versi
 proposée par l'annuaire est **antérieure** à la version installée, ce qui rend la
 remédiation automatique inapplicable en l'état.
 
-Cette étape produit la **seule annotation de niveau `failure`** du job API, alors
-que toutes les étapes sont rapportées `success` et que la vérification est verte :
-c'est le comportement attendu d'une étape informative, pas un échec de test.
+**Défaut corrigé :** cette vérification produisait la **seule annotation de niveau
+`failure`** du job API (« Process completed with exit code 1 ») alors que toutes les
+étapes étaient rapportées `success`. Cause : `npm audit` sort en erreur dès qu'il
+trouve un avis, et `continue-on-error: true` marque bien l'étape en succès mais
+laisse GitHub publier l'annotation d'échec. Un job vert porteur d'une annotation
+d'échec apprend à ignorer les annotations —le contraire de l'effet recherché. Le
+code de sortie est désormais capturé et le constat publié au **bon niveau** :
+`warning` avec le décompte par gravité, `notice` pour les dépendances directes à
+arbitrer. Le script distingue trois situations qui n'ont rien à voir : aucun avis,
+des avis présents, et **audit impossible** (registre injoignable) — le troisième cas
+n'est jamais présenté comme « aucune vulnérabilité ». Le même rapport est produit
+pour l'API et pour la racine.
 
 ---
 

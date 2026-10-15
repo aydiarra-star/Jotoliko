@@ -168,10 +168,19 @@ jobs:
         run: npm run api:smoke
 
       - name: Audit des dépendances (informatif)
-        # Les avis de sécurité transitifs sont signalés sans bloquer la CI :
-        # une remédiation peut exiger une montée de version majeure.
-        continue-on-error: true
-        run: npm audit --audit-level=moderate
+        # Signalé sans bloquer la CI : une remédiation peut exiger une montée de
+        # version majeure, et cette décision n'appartient pas à une étape de CI.
+        #
+        # Le code de sortie est capturé par le script, et non par
+        # `continue-on-error` : ce dernier marque l'étape en succès tout en
+        # laissant GitHub publier une annotation de niveau **erreur** (« exit code
+        # 1 ») sur un job vert. Un job vert porteur d'une annotation d'échec
+        # apprend à ignorer les annotations — le contraire de ce qu'on cherche.
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -uo pipefail
+          node scripts/npm-audit-summary.mjs apps/api "API (dépendances d'exécution)"
+          node scripts/npm-audit-summary.mjs . "racine (site + outillage)"
 
   # ---------------------------------------------------------------------------
   # Tests HTTP de bout en bout.
