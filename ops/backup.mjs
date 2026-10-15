@@ -27,6 +27,7 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { sendNtfyNotification } from "./lib/ntfy.mjs";
 import {
   annotate,
   backupPaths,
