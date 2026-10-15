@@ -1,0 +1,51 @@
+name: Jotoliko disposable PostgreSQL migration test
+
+on:
+  pull_request:
+    paths:
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**"
+      - ".github/workflows/billing-migration-postgres.yml"
+  push:
+    branches:
+      - "feat/monthly-self-service-subscriptions"
+    paths:
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**"
+      - ".github/workflows/billing-migration-postgres.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  migrate-disposable-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: jotoliko_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d jotoliko_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/jotoliko_ci?schema=public
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply full migration history to disposable PostgreSQL 16
+        run: npx --yes prisma@6.19.3 migrate deploy --schema prisma/schema.prisma
+      - name: Validate Prisma schema after migrations
+        run: npx --yes prisma@6.19.3 validate --schema prisma/schema.prisma
