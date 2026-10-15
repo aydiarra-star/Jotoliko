@@ -84,8 +84,16 @@ jobs:
           code=$?
           set -e
           if [ "$code" -ne 0 ]; then
+            # Le diff est publié en annotations : celles-ci restent lisibles via
+            # l'API des check-runs même quand les journaux du runner ne sont pas
+            # téléchargeables depuis l'environnement appelant.
+            n=0
+            while IFS= read -r line && [ "$n" -lt 60 ]; do
+              [ -z "$line" ] && continue
+              echo "::error title=DRIFT(${n})::$(printf '%s' "$line" | head -c 900)"
+              n=$((n + 1))
+            done < drift.sql
             echo "::error::Dérive détectée entre prisma/schema.prisma et prisma/migrations."
-            cat drift.sql
           fi
           echo "drift_exit=$code" >> "$GITHUB_OUTPUT"
           exit "$code"
