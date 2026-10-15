@@ -9,6 +9,7 @@ function makeService() {
     user: { findUnique: vi.fn().mockResolvedValue(null) },
     signupAttempt: {
       findFirst: vi.fn().mockResolvedValue(null),
+      update: vi.fn(),
       create: vi.fn().mockResolvedValue({
         id: "attempt-uuid",
         status: "PENDING_PAYMENT",
