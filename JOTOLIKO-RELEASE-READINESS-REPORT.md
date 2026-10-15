@@ -30,8 +30,9 @@ Non déployable en production. Les raisons ne sont pas des réserves de forme :
 - les seuls RTO mesurés le sont sur une base de test (§ 7.5) ;
 - aucun encaissement n'est confirmé par un fournisseur de paiement : tout est
   déclaratif (§ 9.2) ;
-- douze avis de dépendances subsistent, dont trois élevés côté API, dont le
-  correctif proposé est une montée majeure non appliquée sans autorisation (§ 5.6).
+- douze avis de dépendances subsistent, dont trois côté API (tous dans l'outillage
+  Prisma), dont le correctif proposé est une montée majeure non appliquée sans
+  autorisation (§ 5.6).
 
 ### **READY FOR TECHNICAL PILOT — sous conditions**
 
@@ -386,7 +387,7 @@ rendu non inscriptible.
 | `pg_dump` / `pg_restore` / `psql` | absents localement | ✅ **exécutés en CI** — sauvegarde, restauration et exercice quotidien |
 | Sauvegarde et restauration **opérationnelles** | aucun environnement d'exploitation | ❌ **non exécutées** : la chaîne fonctionne sur une base de test, pas sur une infrastructure (§ 7.2) |
 | `next build` | polices Google hors périmètre réseau | ✅ **exécuté en CI — succès** |
-| Provisionnement d'un hébergeur, devis | aucune dépense autorisée | ❌ **non fait** — inventaire et procédure au § 10, coûts **non vérifiés** |
+| Provisionnement d'un hébergeur | aucune dépense autorisée | ❌ **non fait** — inventaire et prix de liste datés au § 10 ; **aucun compte créé, aucun devis demandé** |
 
 ### 5.6 Audit des dépendances — informatif, non bloquant
 
@@ -453,7 +454,8 @@ fournisseurs sont dans `docs/DEPLOYMENT-ARCHITECTURE.md` § 2 et § 3.
 
 Ce qui manque exactement, sans généralité :
 
-1. une décision d'hébergeur accompagnée de **coûts vérifiés** (§ 10) ;
+1. une décision d'hébergeur : prix de liste relevés et datés (§ 10), **devis à
+   demander** avant l'engagement, puis autorisation de dépense ;
 2. un nom de domaine et un certificat pour l'API et le site ;
 3. un secret d'authentification d'exploitation (généré sur place, jamais transmis
    par ce dépôt) et une liste d'origines CORS réelles ;
@@ -665,36 +667,64 @@ matériel des livreurs, et pas depuis un poste confortablement connecté.
 
 ## 10. Coûts et fournisseurs
 
-**Aucun coût n'est vérifié dans ce rapport, et aucune dépense n'a été engagée.**
-L'environnement de rédaction n'a pas accès aux pages tarifaires des hébergeurs : il
-n'a donc pas été possible de relever des prix datés. Inventer ou approximer ces
-montants serait pire qu'une case vide — une décision de dépense se prend sur des
-chiffres vérifiés à la date de la décision.
+**Aucune dépense n'a été engagée**, aucun compte n'a été créé, aucun service payant
+n'a été provisionné. Ce qui suit sert à **décider**, pas à facturer.
 
-Ce qui peut être dit sans risque :
+### 10.1 Ce qu'il faut dimensionner
 
-- **Aucun service payant n'a été provisionné**, aucune carte, aucun compte, aucune
-  dépense.
-- Le dimensionnement minimal à chiffrer est connu et petit : une instance d'API
-  (1 vCPU, 512 Mio–1 Go), une base PostgreSQL managée (1 vCPU, 1 Go, 10–20 Go), un
-  volume persistant pour les preuves, un support de sauvegarde distinct, un nom de
-  domaine.
-- Les postes à faire chiffrer par un devis réel : hébergement de l'API, base
-  managée, volume et **sauvegardes du volume** (poste souvent facturé à part),
-  domaine et certificat, sauvegardes PostgreSQL (rétention), éventuelle supervision
-  externe, et bande passante sortante au-delà du forfait.
-- Points d'attention contractuels à vérifier auprès du fournisseur : **localisation
-  des données** (pays d'hébergement et de réplication), **durée de rétention des
-  sauvegardes** incluses, procédure de restauration à la demande et son coût,
-  garanties de disponibilité, et conditions de réversibilité (export des données en
-  fin de contrat).
+Le besoin d'un pilote est modeste et connu : une instance d'API (1 vCPU, 512 Mio à
+1 Go), une base PostgreSQL de 10 à 20 Go, un volume persistant pour les preuves, un
+support de sauvegarde **distinct** (c'est le poste qu'on oublie), un nom de domaine.
 
-Procédure : relever les prix datés de deux fournisseurs au minimum, les consigner
-au § « Environnements » de `docs/DEPLOYMENT-ARCHITECTURE.md`, puis demander
-l'autorisation de dépense. **Tant que cette autorisation n'est pas donnée, aucun
-provisionnement n'a lieu.**
+Le poste dominant n'est pas l'API : c'est la **base managée** et, si on la choisit,
+elle coûte plus cher que le serveur qui l'héberge.
 
----
+### 10.2 Prix de liste relevés le 15/10/2026
+
+Prix **mensuels**, hors taxes, tels que rapportés par des comparateurs tiers
+consultés le 15/10/2026. Ce ne sont **pas des devis** : les prix des hébergeurs
+changent, et le prix réel dépend de la région, de la devise et du mode de facturation.
+La colonne « à confirmer » indique ce qu'un devis doit couvrir avant toute décision.
+
+| Option | Coût mensuel rapporté | Ce que ça couvre | À confirmer par devis |
+| --- | --- | --- | --- |
+| **A. Serveur dédié/privé virtuel, PostgreSQL sur la même machine** (Hetzner CX23 ≈ 5,12 $ ; OVH VPS-1 ≈ 5,85 $) + stockage objet pour les sauvegardes hors site (Hetzner ≈ 5,70 $/To ; OVH ≈ 10,75 $/To) | **≈ 11–17 $** | API, base et volume sur la même machine ; sauvegardes hors site dans le stockage objet | coût des sauvegardes du volume, trafic sortant au-delà du forfait, prix de la région |
+| **B. Plateforme applicative à l'usage + base métriquée** (Railway Hobby : 5 $ de crédit puis à l'usage ; base 256 Mio de RAM ≈ 2,50 $/mois mémoire, volume 0,15 $/Go) | **≈ 5–15 $** | conteneur applicatif, base et volume, mises à jour de la plateforme | plafond de dépense (aucun par défaut), coût du trafic, durée de rétention des sauvegardes incluses |
+| **C. Plateforme + base managée** (Fly.io : machine 3,69–6,70 $ + Managed Postgres Basic 38 $ + volume 10 Go ≈ 2,80 $ ; OVH PostgreSQL Essential ≈ 51,26 $) | **≈ 45–52 $** | haute disponibilité, sauvegardes automatisées, bascule automatique, redimensionnement | périmètre exact des sauvegardes incluses, coût d'une restauration à la demande, conditions de réversibilité |
+
+Sources consultées : [pricing Fly.io 2026](https://temps.sh/blog/fly-io-pricing-2026),
+[comparatif PaaS septembre 2026](https://bex.co/blog/2026/09/19/paas-pricing-shakeup-ledger-render-heroku-hetzner),
+[options d'hébergement PostgreSQL](https://flaviocopes.com/database-hosting-options/),
+[OVH vs Railway](https://getdeploying.com/ovh-vs-railway),
+[Hetzner vs Railway](https://getdeploying.com/hetzner-vs-railway).
+
+### 10.3 Recommandation, et ce qu'elle coûte en travail
+
+Pour un **pilote**, l'option A (ou B) suffit : environ **5 à 17 $ par mois**. L'option
+C coûte trois à dix fois plus, et achète une disponibilité dont un pilote n'a pas
+besoin — mais elle achète aussi une chose réelle : **des sauvegardes dont quelqu'un
+d'autre répond**, et une restauration que l'on n'a pas à écrire soi-même.
+
+L'option A déplace donc le coût du budget vers le travail : c'est nous qui exécutons
+`ops/backup.mjs` chaque nuit, qui surveillons l'espace du volume, et qui réparons.
+C'est faisable — c'est précisément ce que cette phase a outillé et éprouvé — mais
+**c'est une astreinte**, et elle doit être acceptée explicitement, pas découverte
+après la première panne.
+
+Points contractuels à vérifier avant de choisir, quelle que soit l'option :
+
+- **localisation des données** : pays d'hébergement et de réplication (une exigence
+  de localisation peut éliminer une option à elle seule) ;
+- **rétention des sauvegardes** incluses, et coût d'une restauration à la demande ;
+- **réversibilité** : pouvoir récupérer la base et les preuves en fin de contrat,
+  dans un format exploitable ;
+- **plafond de dépense** : les offres à l'usage (option B) n'en ont pas par défaut.
+
+### 10.4 Interdiction maintenue
+
+Aucun provisionnement, aucun compte, aucun engagement de dépense sans
+**autorisation explicite**. La présente section donne les éléments de décision ; elle
+n'autorise rien.
 
 ## 11. Écarts restants
 
@@ -749,8 +779,8 @@ provisionnement n'a lieu.**
 
 ### 13.2 Conditions du pilote **opérationnel contrôlé**
 
-1. Staging provisionné, configuré et validé (§ 7.1), avec **coûts vérifiés** (§ 10)
-   et autorisation de dépense.
+1. Staging provisionné, configuré et validé (§ 7.1), après **devis** sur la base
+   des prix relevés (§ 10) et **autorisation explicite de dépense**.
 2. Sauvegarde **planifiée** sur cet environnement, alertes aboutissant à un
    responsable désigné, et **exercice de restauration chronométré** sur place.
 3. Politique de rétention des preuves arrêtée par le client (§ 8.2).
