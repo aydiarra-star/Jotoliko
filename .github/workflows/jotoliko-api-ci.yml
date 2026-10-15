@@ -257,9 +257,28 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          if [ -f e2e.log ]; then
-            grep -hE '^::(notice|warning) ' e2e.log | sort -u | head -40 || true
-          fi
+          # Les mesures sont publiées depuis un fichier écrit par les tests, et non
+          # depuis le journal : la sortie console d'un test est capturée par le
+          # moteur de test, puis reformatée — s'y fier produirait un silence trompeur.
+          node -e '
+            const fs = require("node:fs");
+            if (!fs.existsSync("ops-measures.json")) {
+              console.log("::notice title=RTO-MESURÉ::aucune mesure enregistrée par cette exécution");
+              process.exit(0);
+            }
+            const m = JSON.parse(fs.readFileSync("ops-measures.json", "utf8"));
+            console.log(
+              `::notice title=RTO-MESURÉ::restauration base+volume ${m.restoredTotalMs} ms ` +
+              `(base ${m.restoredDatabaseMs} ms, volume ${m.restoredVolumeMs} ms) ; base seule ${m.databaseOnlyMs} ms ; ` +
+              `${m.proofsVerified}/${m.proofsReferenced} preuve(s) à empreinte conforme ; ` +
+              `${m.proofsWithoutFileIfDatabaseOnly} preuve(s) sans fichier si le volume n est pas restauré ; ` +
+              `problèmes : ${m.problems} — sauvegarde ${m.backupTag} (${m.backupCreatedAt})`
+            );
+            console.log(
+              "::notice title=PORTÉE-DE-LA-MESURE::RTO mesuré sur une base de test PostgreSQL 16 dans un exécuteur CI, " +
+              "hors concurrence et sans les données réelles : le RTO d une infrastructure réelle sera supérieur."
+            );
+          '
 
       - name: Publier le journal des tests
         if: always()

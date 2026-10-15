@@ -256,12 +256,28 @@ httpSuite("Scripts d'exploitation : sauvegarde, restauration, rétention, superv
     const totalMs = report.phases.withProofs.totalMs;
     expect(databaseMs).toBeGreaterThan(0);
     expect(totalMs).toBeGreaterThanOrEqual(databaseMs);
-    console.log(
-      `::notice title=RTO-MESURÉ::restauration « base + volume » ${totalMs} ms ` +
-        `(base ${databaseMs} ms, volume ${report.phases.withProofs.volumeExtractMs} ms) ; ` +
-        `sauvegarde produite le ${report.backupCreatedAt} ; ` +
-        `${report.phases.withProofs.proofsVerified}/${report.phases.withProofs.proofsReferenced} preuve(s) vérifiée(s) ; ` +
-        `base seule : ${report.phases.databaseOnly.durationMs} ms et ${report.phases.databaseOnly.missingProofFiles} preuve(s) sans fichier`
+    // Les mesures sont écrites dans un fichier lu par le workflow : la sortie
+    // console d'un test est capturée par le moteur de test, elle ne peut donc pas
+    // servir de canal fiable vers les annotations du job.
+    writeFileSync(
+      join(REPO_ROOT, "ops-measures.json"),
+      JSON.stringify(
+        {
+          source: "tests/api-e2e/ops-scripts.e2e.test.ts",
+          backupTag: report.backupTag,
+          backupCreatedAt: report.backupCreatedAt,
+          restoredTotalMs: totalMs,
+          restoredDatabaseMs: databaseMs,
+          restoredVolumeMs: report.phases.withProofs.volumeExtractMs,
+          databaseOnlyMs: report.phases.databaseOnly.durationMs,
+          proofsReferenced: report.phases.withProofs.proofsReferenced,
+          proofsVerified: report.phases.withProofs.proofsVerified,
+          proofsWithoutFileIfDatabaseOnly: report.phases.databaseOnly.missingProofFiles,
+          problems: report.problems.length,
+        },
+        null,
+        2
+      )
     );
   }, 120_000);
 

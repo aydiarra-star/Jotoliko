@@ -18,3 +18,4 @@ var/
 # Rapports d'exercice d'exploitation (restauration, sauvegarde).
 **/restore-report.json
 **/status.json
+ops-measures.json
