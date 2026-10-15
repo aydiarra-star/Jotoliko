@@ -82,4 +82,9 @@ La CI comprend les tests du domaine, la migration complète sur PostgreSQL 16 je
 
 ## Statut
 
-Audit de l'historique effectué ; migration SQL additive testée avec succès sur PostgreSQL 16 jetable dans GitHub Actions ; validation Prisma, tests métier, typecheck et build NestJS réussis sur le commit de correction précédent. Le garde d'accès payant vient d'être intégré derrière un indicateur d'activation explicite ; les contrôles CI de cette nouvelle intégration sont en cours. Aucune base partagée n'a été modifiée. Aucun tarif, compte marchand, paiement réel, déploiement ou merge n'a été créé. L'inscription autonome et la facturation ne sont pas encore fonctionnelles.
+- Historique complet des migrations exécuté avec succès sur PostgreSQL 16 jetable en CI ; aucune base partagée ou de production modifiée.
+- Validation Prisma, tests du domaine, typecheck NestJS, build de l'API et construction des images Docker de production et de migration ont réussi sur les commits précédents.
+- Le garde payant est opt-in et limité actuellement aux routes Missions et Preuves.
+- Le devis mensuel en lecture seule vient d'être ajouté ; les contrôles CI du dernier commit doivent encore confirmer le typecheck/build.
+- Aucun tarif n'est approuvé ou provisionné. Aucun compte marchand, paiement réel, déploiement ou merge n'a été créé.
+- L'inscription autonome, le checkout fournisseur et l'activation après paiement ne sont pas encore implémentés. La politique de conservation des inscriptions abandonnées doit être définie avant toute collecte réelle de données personnelles.
