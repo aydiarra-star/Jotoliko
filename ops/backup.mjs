@@ -17,11 +17,11 @@
 //
 // Variables : BACKUP_DIR, DATABASE_URL, PROOF_STORAGE_DIR,
 // BACKUP_KEEP_DAILY, BACKUP_KEEP_WEEKLY, BACKUP_ENCRYPTION,
-// BACKUP_ENCRYPTION_KEY_FILE, BACKUP_MIN_FREE_BYTES, BACKUP_ALERT_COMMAND.
+// BACKUP_ENCRYPTION_KEY_FILE, BACKUP_MIN_FREE_BYTES, BACKUP_ALERT_COMMAND,
 //
-// Ce que ce script ne fait pas : planifier, répliquer sur un site distant,
-// alerter par lui-même sans destinataire configuré. Ces trois points relèvent de
-// l'exploitant et sont listés dans docs/OPERATIONS-RUNBOOK.md.
+// Ce que ce script ne fait pas : planifier ni répliquer sur un site distant.
+// Les notifications ntfy/commande ne sont envoyées que si un destinataire est
+// explicitement configuré. Voir docs/ALERTS-BACKUPS-QUICKSTART.md.
 
 import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -50,8 +50,21 @@ const SKIP_RETENTION = args.has("--skip-retention");
 
 const { problems, config } = loadBackupConfig();
 if (problems.length > 0) {
-  annotate("error", "SAUVEGARDE-CONFIG", problems.join(" | "));
+  const detail = problems.join(" | ");
+  annotate("error", "SAUVEGARDE-CONFIG", detail);
   console.error("\nConfiguration de sauvegarde invalide :\n- " + problems.join("\n- "));
+  const ntfyUrl = process.env.BACKUP_NTFY_URL?.trim() || process.env.JOTOLIKO_NTFY_URL?.trim();
+  if (ntfyUrl) {
+    try {
+      await sendNtfyNotification(ntfyUrl, "Configuration de sauvegarde Jotoliko invalide : " + detail, {
+        title: "Jotoliko — configuration sauvegarde",
+        priority: 5,
+      });
+      console.error("[ALERTE] Notification de configuration envoyée.");
+    } catch (alertError) {
+      console.error("[ALERTE NON TRANSMISE] " + (alertError instanceof Error ? alertError.message : "échec inconnu"));
+    }
+  }
   process.exit(1);
 }
 
