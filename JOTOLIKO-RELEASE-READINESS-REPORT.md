@@ -626,7 +626,14 @@ banque. Le rapprochement doit donc être **manuel** et documenté (déclaré / r
 écart), et aucune communication ne doit présenter un encaissement comme confirmé
 par un fournisseur.
 
-### 9.3 Décision sur l'expérience hors ligne — **proposée, à valider par le client**
+### 9.3 Décision sur l'expérience hors ligne
+
+**Décision, prise et assumée : aucune expérience hors ligne installable n'est
+requise avant le pilote.** La construction d'une PWA est **reportée**, pas
+abandonnée : elle est réexaminée après le pilote, sur la base de ce qui aura
+réellement manqué sur le terrain. Ce qui reste à valider par le client n'est pas la
+décision technique, mais **la contrainte d'exploitation qu'elle implique** — voir la
+fin de cette section.
 
 **État réel.** La file d'attente hors ligne (`lib/jotoliko-os/offline-queue.ts`)
 est de la **logique seule** : états `EN_ATTENTE` → `SYNCHRONISATION` →
