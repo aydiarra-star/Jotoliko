@@ -7,8 +7,9 @@ Toutes les routes sont couvertes par `ThrottlerGuard` (120 req/min par défaut).
 limitées à 30 req/min.
 
 Aucun endpoint documenté ci-dessous n'est fictif : seuls les endpoints réellement
-implémentés figurent ici. Les fonctionnalités absentes (commandes, preuves,
-tournées, notifications, remises consolidées) **ne sont pas déclarées**.
+implémentés figurent ici. Les fonctionnalités absentes (commandes, clients,
+tournées, notifications, remises consolidées, paiement mobile money) **ne sont pas
+déclarées**.
 
 ## Public
 
@@ -87,9 +88,13 @@ appliqué côté serveur.
 }
 ```
 
-> **Note d'implémentation connue** : `gps.at`, `gps.latitude` et `gps.longitude`
-> ne sont pas encore alimentés dans la vue (`null` systématique) alors que les
-> colonnes sont lues. `gps.truth` est en revanche exact. À corriger avant pilote.
+> **Fraîcheur et coordonnées.** Corrigé et vérifié par test HTTP : la vue
+> recalcule `gps.truth` **à chaque lecture** depuis l'horodatage de mesure, et ne
+> renvoie `latitude`/`longitude` que tant que la position est exploitable
+> (`truth` différent de `INDISPONIBLE`). Au-delà de 15 minutes, `truth` vaut
+> `INDISPONIBLE` et les coordonnées sont `null` : **une position périmée n'est
+> jamais présentée comme une position actuelle**. Si aucune mesure n'a jamais été
+> enregistrée, `at` vaut également `null`.
 
 ### `GET /missions/:id`
 `MissionView` ou `404`.
@@ -143,6 +148,63 @@ Permission : `recordGps`. Un `DRIVER` ne peut agir que sur ses missions.
   ≤ 60 s `REEL`, ≤ 900 s `DERNIERE_POSITION_CONNUE`, au-delà `INDISPONIBLE` et la
   mesure est refusée à l'écriture.
 
+
+### `POST /missions/:missionId/proofs`
+Permission : `uploadProof` (`OWNER`, `ADMIN`, `MANAGER`, `DRIVER`). Un `DRIVER` ne
+peut déposer que sur ses propres missions ; une mission d'une autre entreprise
+renvoie `404`.
+
+Le contenu est transmis en base64 dans le corps JSON (aucun analyseur multipart).
+```json
+{
+  "mimeType": "image/jpeg",
+  "dataBase64": "<contenu encodé>",
+  "type": "PHOTO",
+  "recipientName": "Awa Ndiaye",
+  "note": "Remis en main propre",
+  "latitude": 14.6928,
+  "longitude": -17.4467,
+  "recordedAt": "2026-10-15T09:58:00Z",
+  "clientId": "terrain-preuve-0001"
+}
+```
+- `201` — preuve créée. La réponse décrit la preuve **sans jamais renvoyer son
+  contenu** et sans exposer la clé de stockage :
+  `{ id, missionId, type, mimeType, sizeBytes, sha256, recipientName, note, recordedAt, createdAt, downloadedBy }`.
+- `200` — le dépôt a été rejoué : soit `clientId` déjà connu de l'entreprise, soit
+  contenu strictement identique pour la même mission (même empreinte SHA-256). La
+  réponse porte alors l'identifiant **déjà existant** : un terrain hors ligne peut
+  renvoyer son dépôt sans créer de doublon.
+- `400` — contenu vide, ou chaîne qui n'est pas du base64.
+- `413` — contenu au-delà de 5 Mio.
+- `415` — type déclaré hors `image/jpeg`, `image/png`, `image/webp`,
+  `application/pdf`, **ou contenu réel ne correspondant pas au type déclaré**
+  (renommer un fichier ne le convertit pas : la signature binaire est vérifiée).
+- `403` — rôle sans `uploadProof`, ou mission hors du périmètre du livreur.
+
+Types acceptés et extensions employées : `image/jpeg` → `.jpg`, `image/png` →
+`.png`, `image/webp` → `.webp`, `application/pdf` → `.pdf`.
+
+### `GET /missions/:missionId/proofs`
+Permission : `readProof` (`OWNER`, `ADMIN`, `MANAGER`, `DRIVER`, `VIEWER`).
+Un `DRIVER` ne liste que les preuves de ses propres missions. Les preuves
+supprimées (`deletedAt` renseigné) ne figurent pas dans la liste. `200` avec un
+tableau — **jamais** le contenu.
+
+### `GET /missions/:missionId/proofs/:proofId`
+Permission : `readProof`. Renvoie le contenu en flux, avec
+`Content-Type` réel, `Content-Length`, `Cache-Control: private, no-store`,
+`Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`.
+- `410` — la preuve est référencée mais **absente du stockage**. La ligne est
+  conservée : l'incident est signalé explicitement plutôt que servi comme un
+  contenu vide.
+
+### `DELETE /missions/:missionId/proofs/:proofId`
+Permission : `deleteProof` (`OWNER`, `ADMIN`, `MANAGER`). Suppression **logique**
+(`deletedAt`) : la ligne reste auditable et l'opération est tracée (`PROOF_DELETED`).
+Le fichier reste sur le disque ; sa purge physique relève de la procédure de
+rétention (cf. `docs/SECURITY-MODEL.md`). `200` avec la preuve marquée supprimée.
+
 ## Erreurs
 
 | Code | Sens |
@@ -160,6 +222,21 @@ Toute propriété non déclarée dans le DTO est **rejetée**, pas ignorée.
 
 ## Non implémenté (à ne pas documenter comme disponible)
 
-Commandes, clients, destinataires, preuves (stockage), tournées, remises de caisse
-consolidées, anomalies, notifications, import de données, rôles/administration,
-journal d'audit exposé en lecture.
+Commandes, clients, destinataires, tournées, remises de caisse consolidées,
+anomalies, notifications (aucun canal n'est configuré), import de données,
+rôles/administration, journal d'audit exposé en lecture.
+
+**Paiement mobile money** : aucun fournisseur n'est configuré ni testé. Les
+encaissements (`POST /missions/:id/payment`) enregistrent une **déclaration**
+d'exploitation (le livreur dit avoir encaissé), pas un mouvement d'argent réel.
+Aucune intégration de paiement ne doit être annoncée comme fonctionnelle.
+
+**Stockage des preuves** : implémenté sur un répertoire dédié du serveur
+(`PROOF_STORAGE_DIR`), et non sur un stockage objet avec URL signée. Les preuves
+ne sont donc jamais accessibles par URL publique : elles passent toutes par l'API
+après contrôle du périmètre.
+
+**Sauvegardes** : la procédure existe et est exécutée automatiquement en CI
+(`tests/api-e2e/backup-restore.e2e.test.ts` : `pg_dump` puis `pg_restore` dans une
+base isolée). Aucune sauvegarde automatique de production n'est configurée : voir
+`docs/DEPLOYMENT-ARCHITECTURE.md`.
