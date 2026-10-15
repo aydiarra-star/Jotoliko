@@ -65,12 +65,8 @@ export class SignupService {
       });
     }
 
-    const [existingUser, existingCompany, pendingAttempt] = await Promise.all([
+    const [existingUser, pendingAttempt] = await Promise.all([
       this.prisma.user.findUnique({ where: { email }, select: { id: true } }),
-      this.prisma.company.findUnique({
-        where: { slug: slugifyCompanyName(companyName) },
-        select: { id: true },
-      }),
       this.prisma.signupAttempt.findFirst({
         where: { ownerEmail: email, status: "PENDING_PAYMENT", expiresAt: { gt: now } },
         select: { id: true },
@@ -81,12 +77,6 @@ export class SignupService {
       throw new ConflictException({
         code: "EMAIL_ALREADY_REGISTERED",
         message: "Cette adresse est déjà associée à un compte. Connectez-vous ou utilisez une autre adresse.",
-      });
-    }
-    if (existingCompany) {
-      throw new ConflictException({
-        code: "COMPANY_SLUG_UNAVAILABLE",
-        message: "Le nom d'entreprise est déjà utilisé. Choisissez un nom distinct.",
       });
     }
     if (pendingAttempt) {
