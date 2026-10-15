@@ -131,6 +131,7 @@ bornait à 64 : toute deuxième page renvoyait `400`).
 | `96a43ca` | Défauts révélés par la première exécution réelle des scripts (§ 4.4) ; contrôle statique `checkJs` des scripts d'exploitation |
 | `a335edb` | Deux attentes fausses de la suite système corrigées, non contournées |
 | `382fd23` | Mesures de restauration publiées depuis un fichier, et non depuis le journal — la restitution affichait sinon « aucune mesure » alors que la restauration avait été mesurée |
+| `8b43028` | Un job vert ne porte plus d'annotation d'échec : l'audit des dépendances publie son constat au bon niveau (§ 5.6) |
 | `f76e90c` | **Défaut contredisant sa propre règle** (§ 4.5) : délai de la sonde porté de 5 s à 12 s pour dépasser le budget interne de l'API, vivacité retenue comme discriminant entre « dégradé » et « injoignable », et test système éprouvant le comportement **par défaut** au lieu d'un délai ajusté |
 
 ---
@@ -253,8 +254,8 @@ plus aucun délai : il éprouve exactement ce que l'astreinte exécutera.
 ### 5.1 Bout en bout, sur PostgreSQL 16 réel (CI)
 
 Job « Tests HTTP de bout en bout (API + PostgreSQL 16) » —
-[run 38721134506 / job 116375687090](https://github.com/aydiarra-star/Jotoliko/actions/runs/38721134506/job/116375687090)
-— **pass**, 1 min 14.
+[run 38722270551 / job 116379488992](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722270551/job/116379488992)
+— **pass**, 1 min 19.
 
 Le serveur est démarré **tel qu'il est livré** et interrogé par de vraies requêtes
 HTTP : chaîne garde d'authentification → garde de permissions → validation →
@@ -282,11 +283,19 @@ Bilan publié par la CI elle-même (annotation `E2E-BILAN`, vérifiable par API)
 
 | Vérification | Résultat | Durée | Lien |
 | --- | --- | --- | --- |
-| API (Prisma, migrations, build) | ✅ pass | 57 s | [job 116375686746](https://github.com/aydiarra-star/Jotoliko/actions/runs/38721134506/job/116375686746) |
-| Tests HTTP de bout en bout (API + PostgreSQL 16) | ✅ pass | 1 min 14 | [job 116375687090](https://github.com/aydiarra-star/Jotoliko/actions/runs/38721134506/job/116375687090) |
-| Sauvegarde, restauration mesurée et purge (base de test) | ✅ pass | 1 min 3 | [job 116375687091](https://github.com/aydiarra-star/Jotoliko/actions/runs/38721134484/job/116375687091) |
-| Reality tests sur PostgreSQL 16 réel | ✅ pass | 56 s | [job 116375688101](https://github.com/aydiarra-star/Jotoliko/actions/runs/38721134717/job/116375688101) |
-| Site + invariants + PostgreSQL embarqué | ✅ pass | 1 min 3 | [job 116375687840](https://github.com/aydiarra-star/Jotoliko/actions/runs/38721134717/job/116375687840) |
+| API (Prisma, migrations, build) | ✅ pass | 1 min 26 | [job 116379488592](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722270551/job/116379488592) |
+| Tests HTTP de bout en bout (API + PostgreSQL 16) | ✅ pass | 1 min 19 | [job 116379488992](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722270551/job/116379488992) |
+| Sauvegarde, restauration mesurée et purge (base de test) | ✅ pass | 1 min 5 | [job 116379471693](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722270552/job/116379471693) |
+| Reality tests sur PostgreSQL 16 réel | ✅ pass | 42 s | [job 116379471580](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722270493/job/116379471580) |
+| Site + invariants + PostgreSQL embarqué | ✅ pass | 59 s | [job 116379471760](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722270493/job/116379471760) |
+
+Ces cinq vérifications portent **toutes** le niveau `success` et **aucune annotation
+de niveau `failure`** — vérifié sur les annotations elles-mêmes, par l'API GitHub, et
+non sur la couleur du job. Les seules annotations `warning` restantes sont les
+rappels d'outillage (dépréciation de Node 20 par des actions tierces) et le constat
+d'audit des dépendances, publié au niveau qui lui revient (§ 5.6). Les constats
+d'exploitation sont publiés en `notice` : durée de restauration, risque « base
+seule », état des sauvegardes, portée de l'exercice.
 
 Le job API exécute en plus, sur une base migrée par `prisma migrate deploy` :
 validation du schéma, génération du client, **détection de dérive schéma ⇄
@@ -439,7 +448,7 @@ ligne de preuve, la caisse et le journal d'audit.
 
 **(b) Chaîne opérationnelle** — les scripts qui seront réellement planifiés sont
 exécutés de bout en bout, sur une base de test, par l'exercice
-`Jotoliko — exercice d'exploitation` ([job 116375687091](https://github.com/aydiarra-star/Jotoliko/actions/runs/38721134484/job/116375687091)) :
+`Jotoliko — exercice d'exploitation` ([job 116379471693](https://github.com/aydiarra-star/Jotoliko/actions/runs/38722270552/job/116379471693)) :
 sauvegarde de la base **et** du volume de preuves, deux exécutions successives
 (pointeur `latest` et rétention), restauration dans une base isolée, purge des
 preuves avec refus sans date limite.
@@ -448,12 +457,22 @@ Mesures publiées par cet exercice (annotations `RTO-MESURÉ` et `PORTÉE-DE-LA-
 
 | Mesure | Valeur observée |
 | --- | --- |
-| Sauvegarde complète (base + volume, ~0,1 Mio) | ~110 ms, relue et vérifiée par empreinte |
-| Restauration « base + volume » | **2 972 ms** (base 2 968 ms, extraction du volume 4 ms) |
-| Restauration « base seule » | 259 ms |
+| Sauvegarde complète (base + volume, ~0,1 Mio) | 156–165 ms, relue et vérifiée par empreinte |
+| Restauration « base + volume » — test système | **226 ms** (base 222 ms, extraction du volume 4 ms) |
+| Restauration « base + volume » — exercice d'exploitation | **255 ms** (base 250 ms, extraction du volume 5 ms) |
+| Restauration « base seule » | 279–331 ms |
 | Preuves à empreinte conforme après restauration | 1 / 1 |
 | Preuves référencées sans fichier si le volume n'est pas restauré | 1 (téléchargement impossible : `410`) |
 | Problèmes détectés | 0 |
+
+**Ces durées varient d'un facteur dix d'une exécution à l'autre** : une première
+mesure de la même restauration donnait 2 972 ms, les deux dernières 226 ms et
+255 ms. La cause est le coût fixe de `CREATE DATABASE` et du démarrage de
+`pg_restore`, dominé par la charge de l'exécuteur, sur une base de quelques
+mégaoctets. C'est précisément pourquoi ces chiffres ne peuvent pas servir
+d'engagement : ils mesurent l'outillage, pas l'infrastructure. Une seule conclusion
+est solide : **la chaîne fonctionne et se mesure** — la durée, elle, est à
+re-mesurer sur l'environnement réel.
 
 **Ce que la sauvegarde couvre, et pourquoi les deux éléments sont obligatoires.**
 Les preuves vivent hors de la base : la base ne contient que l'empreinte et la clé
@@ -486,7 +505,7 @@ sauvegarde vérifiée prise juste avant. Procédure détaillée :
 | Objectif | Valeur | Hypothèses |
 | --- | --- | --- |
 | **RPO** | ≤ 24 h | sauvegarde **quotidienne**. Aucune journalisation continue (*WAL archiving*) : le RPO ne peut pas être inférieur à l'intervalle de sauvegarde |
-| **RTO technique** (base + volume) | ~3 s sur base de test | création de la base + `pg_restore` + extraction du volume, mesuré en CI |
+| **RTO technique** (base + volume) | 0,2–3 s sur base de test selon l'exécution | création de la base + `pg_restore` + extraction du volume, mesuré en CI (§ 7.2) |
 | **RTO réel d'incident** | **non mesuré** | inclut détection, décision humaine, bascule et reprise de service |
 
 **Portée, énoncée pour éviter tout malentendu :** ces durées portent sur une base
@@ -514,6 +533,14 @@ dont les durées remplacent celles-ci. Aucune valeur contractuelle n'est annonc�
   `410 Gone` — comportement attendu, pas panne ;
 - sauvegarde des preuves intégrée à la chaîne de sauvegarde (§ 7.2), avec
   vérification d'empreinte après restauration.
+
+**La purge est éprouvée sur ses effets, pas sur sa sortie.** L'exercice quotidien
+pose trois preuves — une active, une supprimée depuis 400 jours, une supprimée le
+jour même — puis vérifie, après purge : le fichier éligible **a disparu**, la preuve
+supprimée récemment et l'active sont **toujours là**, et les **trois lignes** de
+`proof_files` sont intactes. Avant correction, l'exercice ne supprimait rien : il ne
+démontrait que son propre refus, et publiait « rien à purger » sous un titre
+trompeur.
 
 ### 8.2 Décisions qui exigent une validation humaine
 
@@ -736,7 +763,11 @@ BACKUP_DIR=… node ops/restore-verify.mjs                   # restauration vér
 node ops/prune-proofs.mjs --before=AAAA-MM-JJ               # simulation de purge
 node ops/healthcheck.mjs --url=https://api.exemple.org     # 0/1/2 selon l'état
 
-# 4. CI
+# 4. Audit des dépendances (informatif, jamais bloquant)
+node scripts/npm-audit-summary.mjs . "racine (site + outillage)"
+node scripts/npm-audit-summary.mjs apps/api "API (dépendances d'exécution)"
+
+# 5. CI
 gh pr checks 4               # 5 vérifications
 gh run list --branch arena/dd76021f-jotoliko
 # Bilan des cas exécutés : annotation « E2E-BILAN » du job e2e
@@ -751,6 +782,6 @@ publiés en annotations, lisibles par l'API GitHub :
 gh api "repos/aydiarra-star/Jotoliko/check-runs/<job_id>/annotations"
 ```
 
-*Rapport établi sur les preuves exécutées au commit `382fd23` de la branche
+*Rapport établi sur les preuves exécutées au commit `408ae9a` de la branche
 `arena/dd76021f-jotoliko`. Toute évolution ultérieure du code invalide les mesures
 citées ici : elles devront être reproduites.*

@@ -128,8 +128,24 @@ jobs:
             -c "INSERT INTO missions (id, \"companyId\", reference, \"clientName\", status, \"expectedAmount\", \"updatedAt\") VALUES ('$MISSION', '$ENTREPRISE', 'EXERCICE-1', 'Client d exercice', 'LIVREE', 5000, NOW());" \
             -c "INSERT INTO proof_files (id, \"companyId\", \"missionId\", \"mimeType\", \"sizeBytes\", \"sha256\", \"storageKey\", \"type\") VALUES (gen_random_uuid(), '$ENTREPRISE', '$MISSION', 'image/png', $TAILLE, '$EMPREINTE', '$CLE/preuve.png', 'PHOTO');"
 
+          # Trois preuves, pour que la purge ait réellement quelque chose à faire :
+          # une active (jamais touchée), une supprimée depuis longtemps (éligible),
+          # une supprimée récemment (protégée par la date limite). Sans elles,
+          # l'exercice de purge ne démontrerait que son refus.
+          ANCIENNE=$(date -u -d '400 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          RECENTE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          for CAS in "ancienne:$ANCIENNE" "recente:$RECENTE"; do
+            NOM=${CAS%%:*}
+            SUPPRIME=${CAS#*:}
+            printf 'preuve %s — exercice d exploitation' "$NOM" > "$PROOF_STORAGE_DIR/$CLE/$NOM.png"
+            TAILLE_CAS=$(stat -c%s "$PROOF_STORAGE_DIR/$CLE/$NOM.png")
+            EMPREINTE_CAS=$(sha256sum "$PROOF_STORAGE_DIR/$CLE/$NOM.png" | cut -d' ' -f1)
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q \
+              -c "INSERT INTO proof_files (id, \"companyId\", \"missionId\", \"mimeType\", \"sizeBytes\", \"sha256\", \"storageKey\", \"type\", \"deletedAt\") VALUES (gen_random_uuid(), '$ENTREPRISE', '$MISSION', 'image/png', $TAILLE_CAS, '$EMPREINTE_CAS', '$CLE/$NOM.png', 'PHOTO', '$SUPPRIME'::timestamp);"
+          done
+
           PREUVES=$(psql "$DATABASE_URL" -tAc 'SELECT count(*) FROM proof_files')
-          echo "::notice title=DONNÉES-D-EXERCICE::$PREUVES preuve(s) référencée(s), fichier présent sur le volume"
+          echo "::notice title=DONNÉES-D-EXERCICE::$PREUVES preuve(s) référencée(s) ($(psql "$DATABASE_URL" -tAc 'SELECT count(*) FROM proof_files WHERE "deletedAt" IS NOT NULL') supprimée(s)), fichiers présents sur le volume"
 
       - name: Sauvegarde — pointeur « latest » et rétention, sur deux exécutions
         run: |
@@ -163,12 +179,19 @@ jobs:
             }
           '
 
-      - name: Purge des preuves (simulation puis exécution)
-        # La preuve insérée est active : aucune date limite ne doit la toucher.
-        # Le contrôle vérifie donc que la purge refuse de partir sans date, et
-        # qu'aucun fichier actif ne disparaît.
+      - name: Purge des preuves (refus, simulation, exécution)
+        # Quatre contrôles, dont trois qui portent sur des effets observables :
+        #   1. refus sans date limite — la durée de conservation est une décision
+        #      humaine, elle ne peut pas être implicite ;
+        #   2. simulation — rien n'est supprimé ;
+        #   3. exécution — la preuve ancienne supprimée part, la récente reste ;
+        #   4. la ligne en base survit à la disparition du fichier : l'auditabilité
+        #      n'est pas sacrifiée, et un téléchargement répondra 410.
         run: |
           set -euo pipefail
+          BASE="$PROOF_STORAGE_DIR/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222"
+          LIMITE=$(date -u -d '200 days ago' +%Y-%m-%d)
+
           # Le refus est l'issue **attendue** : la publication d'annotations est
           # neutralisée pour cette invocation, sinon un job vert porterait une
           # annotation d'échec.
@@ -176,9 +199,28 @@ jobs:
             echo "::error title=PURGE-SANS-DATE::la purge a accepté de s'exécuter sans date limite"
             exit 1
           fi
-          node ops/prune-proofs.mjs --before=2030-01-01 --confirm
-          test -f "$PROOF_STORAGE_DIR/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/preuve.png"
-          echo "::notice title=PURGE::refus sans date limite, et preuve active intacte après purge"
+
+          node ops/prune-proofs.mjs --before="$LIMITE"
+          test -f "$BASE/ancienne.png"
+          test -f "$BASE/recente.png"
+          test -f "$BASE/preuve.png"
+          echo "::notice title=PURGE-SIMULATION::simulation sans date limite de suppression réelle — les trois fichiers sont intacts"
+
+          node ops/prune-proofs.mjs --before="$LIMITE" --confirm
+
+          if [ -f "$BASE/ancienne.png" ]; then
+            echo "::error title=PURGE::la preuve ancienne supprimée est toujours sur le volume"
+            exit 1
+          fi
+          test -f "$BASE/recente.png"
+          test -f "$BASE/preuve.png"
+
+          LIGNES=$(psql "$DATABASE_URL" -tAc 'SELECT count(*) FROM proof_files')
+          test "$LIGNES" = "3"
+          LIGNES_ACTIVES=$(psql "$DATABASE_URL" -tAc 'SELECT count(*) FROM proof_files WHERE "deletedAt" IS NULL')
+          test "$LIGNES_ACTIVES" = "1"
+
+          echo "::notice title=PURGE::date limite $LIMITE — 1 fichier supprimé, 1 preuve récemment supprimée et 1 preuve active intactes, $LIGNES ligne(s) de traçabilité conservée(s)"
 
       - name: Publier le rapport d'exercice
         if: always()
