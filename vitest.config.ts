@@ -12,7 +12,17 @@ export default defineConfig({
     // ramasse le JavaScript compilé (apps/api/dist) et exécute des copies de
     // tests déjà compilées — échecs incompréhensibles et résultats dupliqués.
     include: ["lib/**/*.test.ts", "tests/**/*.test.ts"],
-    exclude: ["**/node_modules/**", "**/dist/**", "**/.next/**", "out/**", "apps/**/dist/**"],
+    // `tests/api-e2e` est exclu volontairement : ces tests ont leur propre
+    // configuration (vitest.e2e.config.ts) car ils exigent une API compilée et
+    // un PostgreSQL réel — `npm test` doit rester exécutable sans base.
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/.next/**",
+      "out/**",
+      "apps/**/dist/**",
+      "tests/api-e2e/**",
+    ],
     environment: "node",
     // Les tests base de données appliquent une migration réelle : ils ont
     // besoin d'un délai supérieur au défaut.

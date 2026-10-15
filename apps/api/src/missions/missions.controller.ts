@@ -4,7 +4,9 @@ import { AuthGuard } from "../auth/auth.guard";
 import { RequirePermission, RolesGuard } from "../auth/roles.guard";
 import type { AuthenticatedRequest } from "../auth/auth.types";
 import { MissionsService } from "./missions.service";
+import { AssignMissionDto } from "./dto/assign-mission.dto";
 import { CollectPaymentDto } from "./dto/collect-payment.dto";
+import { CreateMissionDto } from "./dto/create-mission.dto";
 import { ListMissionsDto } from "./dto/list-missions.dto";
 import { RecordGpsDto } from "./dto/record-gps.dto";
 import { RemitCashDto } from "./dto/remit-cash.dto";
@@ -28,6 +30,32 @@ export class MissionsController {
   @Get(":id")
   get(@Req() req: AuthenticatedRequest, @Param("id") id: string) {
     return this.missions.get(req.auth!, id);
+  }
+
+  /**
+   * Création d'une mission. `Idempotency-Key` est facultatif : une reprise hors
+   * ligne qui rejoue la même création obtient la mission déjà créée plutôt
+   * qu'une seconde mission.
+   */
+  @Post()
+  @RequirePermission("createMission")
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  create(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: CreateMissionDto,
+    @Headers("idempotency-key") key?: string
+  ) {
+    return this.missions.create(req.auth!, body, key, req.requestId);
+  }
+
+  @Post(":id/assignment")
+  @RequirePermission("assignMission")
+  assign(
+    @Req() req: AuthenticatedRequest,
+    @Param("id") id: string,
+    @Body() body: AssignMissionDto
+  ) {
+    return this.missions.assign(req.auth!, id, body, req.requestId);
   }
 
   @Post(":id/transition")

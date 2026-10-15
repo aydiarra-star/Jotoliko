@@ -78,6 +78,25 @@ export const PERMISSIONS = {
   readAudit: ["OWNER", "ADMIN", "MANAGER"],
   /** Crée ou modifie une commande. */
   writeOrder: ["OWNER", "ADMIN", "MANAGER", "SELLER"],
+  /**
+   * Crée une mission dans le centre des opérations. Réservé au bureau : un
+   * livreur ne se crée pas de travail, il exécute celui qui lui est affecté.
+   */
+  createMission: ["OWNER", "ADMIN", "MANAGER", "SELLER"],
+  /** Affecte ou réaffecte une mission à un livreur de l'entreprise. */
+  assignMission: ["OWNER", "ADMIN", "MANAGER"],
+  /**
+   * Dépose une preuve de livraison. Le livreur dépose sur ses propres missions,
+   * le bureau sur celles de l'entreprise (contrôle de périmètre dans le service).
+   */
+  uploadProof: ["OWNER", "ADMIN", "MANAGER", "DRIVER"],
+  /** Consulte les preuves de livraison. */
+  readProof: ["OWNER", "ADMIN", "MANAGER", "DRIVER", "VIEWER"],
+  /**
+   * Supprime (logiquement) une preuve. Le bureau uniquement : un livreur ne
+   * peut pas effacer la preuve qui justifie sa livraison.
+   */
+  deleteProof: ["OWNER", "ADMIN", "MANAGER"],
 } as const satisfies Record<string, readonly AppRole[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

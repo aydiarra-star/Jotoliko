@@ -1,9 +1,11 @@
 import "reflect-metadata";
 import { ValidationPipe, Logger } from "@nestjs/common";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
-import { loadConfig } from "./config";
+import { describeConfig, loadConfig } from "./config";
 import { requestIdMiddleware } from "./common/request-id.middleware";
+import { GlobalExceptionFilter } from "./common/exception.filter";
 
 async function bootstrap(): Promise<void> {
   const logger = new Logger("Bootstrap");
@@ -12,9 +14,17 @@ async function bootstrap(): Promise<void> {
   // démarrer que servir avec un secret absent ou un CORS ouvert.
   const config = loadConfig();
 
-  const app = await NestFactory.create(AppModule, { bodyParser: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: true });
+
+  // L'adresse client retenue par Express (donc par la limitation de débit et la
+  // journalisation) dépend de ce réglage. À 0, aucun en-tête n'est cru.
+  if (config.trustProxyHops > 0) app.set("trust proxy", config.trustProxyHops);
 
   app.use(requestIdMiddleware);
+
+  // Réponses d'erreur : statut réel, jamais de trace d'exécution ni de détail
+  // interne (voir apps/api/src/common/exception.filter.ts).
+  app.useGlobalFilters(new GlobalExceptionFilter());
 
   app.enableCors({
     origin: config.corsOrigins,
@@ -48,7 +58,10 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
 
   await app.listen(config.port, "0.0.0.0");
-  logger.log(`API Jotoliko à l'écoute sur le port ${config.port}`);
+  // La configuration effective est journalisée (jamais le secret lui-même,
+  // seulement sa longueur) : un incident de production se diagnostique d'abord
+  // en relisant ce que le processus croyait.
+  logger.log(`API Jotoliko à l'écoute : ${JSON.stringify(describeConfig(config))}`);
 }
 
 bootstrap().catch((error: unknown) => {

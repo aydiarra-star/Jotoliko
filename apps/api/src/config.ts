@@ -11,7 +11,22 @@ export type AppConfig = {
   authSecret: string;
   corsOrigins: string[];
   isProduction: boolean;
+  /**
+   * Nombre de proxies de confiance devant l'API (0 = aucune).
+   *
+   * Ce réglage conditionne deux choses réelles : l'adresse retenue pour la
+   * limitation de débit et l'IP journalisée. À 0, l'en-tête `X-Forwarded-For`
+   * est ignoré (impossible à falsifier par un client direct) — mais derrière un
+   * répartiteur, tous les utilisateurs partagent alors le quota d'une seule IP,
+   * ce qui transforme la limite de 5 connexions/minute en panne à l'échelle d'un
+   * bureau. Le déploiement DOIT donc fixer cette valeur au nombre de proxies
+   * réels, et l'API ne doit jamais être joignable directement dans ce cas.
+   */
+  trustProxyHops: number;
 };
+
+/** Plage acceptée pour TRUST_PROXY_HOPS : au-delà, la valeur est une erreur. */
+const MAX_TRUST_PROXY_HOPS = 10;
 
 class ConfigError extends Error {}
 
@@ -61,7 +76,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw new ConfigError(`PORT invalide : ${env.PORT}`);
   }
 
-  return { port, databaseUrl, authSecret, corsOrigins, isProduction };
+  const trustProxyHops = Number(env.TRUST_PROXY_HOPS ?? 0);
+  if (!Number.isInteger(trustProxyHops) || trustProxyHops < 0 || trustProxyHops > MAX_TRUST_PROXY_HOPS) {
+    throw new ConfigError(
+      `TRUST_PROXY_HOPS invalide : ${env.TRUST_PROXY_HOPS} (entier entre 0 et ${MAX_TRUST_PROXY_HOPS} attendu)`
+    );
+  }
+
+  return { port, databaseUrl, authSecret, corsOrigins, isProduction, trustProxyHops };
 }
 
 export function describeConfig(config: AppConfig): Record<string, unknown> {
@@ -70,6 +92,7 @@ export function describeConfig(config: AppConfig): Record<string, unknown> {
     port: config.port,
     corsOrigins: config.corsOrigins,
     isProduction: config.isProduction,
+    trustProxyHops: config.trustProxyHops,
     authSecret: `[${config.authSecret.length} caractères]`,
   };
 }

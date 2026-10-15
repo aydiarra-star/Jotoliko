@@ -139,3 +139,62 @@ jobs:
         # une remédiation peut exiger une montée de version majeure.
         continue-on-error: true
         run: npm audit --audit-level=moderate
+
+  # ---------------------------------------------------------------------------
+  # Tests HTTP de bout en bout.
+  #
+  # Le serveur est lancé tel qu'il est livré (`node dist/apps/api/src/main.js`)
+  # sur une vraie base PostgreSQL, et interrogé par de vraies requêtes HTTP : la
+  # chaîne garde d'authentification → garde de permissions → validation → service
+  # → Prisma → SQL → contraintes est réellement exercée. C'est ce que la
+  # compilation et les tests unitaires ne peuvent pas prouver.
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: Tests HTTP de bout en bout (API + PostgreSQL 16)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: jotoliko
+          POSTGRES_PASSWORD: jotoliko
+          POSTGRES_DB: jotoliko_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jotoliko -d jotoliko_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://jotoliko:jotoliko@localhost:5432/jotoliko_e2e
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Dépendances du dépôt (harnais de test)
+        run: npm ci
+
+      - name: Dépendances de l'API
+        run: npm --prefix apps/api ci
+
+      - name: Génération du client Prisma
+        run: npm --prefix apps/api run prisma:generate
+
+      - name: Build de l'API
+        run: npm --prefix apps/api run build
+
+      - name: Vérification du point d'entrée démarré
+        run: test -f apps/api/dist/apps/api/src/main.js
+
+      - name: Tests HTTP de bout en bout
+        # Aucun test n'est ignoré ici : les suites qui exigent une base échouent
+        # si DATABASE_URL est absent (voir tests/api-e2e/harness.ts).
+        run: npm run test:e2e:api

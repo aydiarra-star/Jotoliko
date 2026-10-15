@@ -6,11 +6,10 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import {
   assertAcceptableGpsTimestamp,
-  assertAllowed,
   assertCanActOnMission,
   assertCollectAmount,
   assertDeliveryClosable,
@@ -19,18 +18,24 @@ import {
   assertRemittanceAmount,
   assertTransition,
   gpsTruthFromAge,
+  isAppRole,
+  isAllowed,
   isMissionStatus,
   isTruthStatus,
+  isUsableCoordinates,
   normalizeMoneyState,
   operationScope,
   type AppRole,
   type Mission,
+  type Permission,
   type MissionStatus,
   type TruthStatus,
 } from "../../../../lib/jotoliko-os/core";
 import { PrismaService } from "../prisma.service";
 import type { AuthContext } from "../auth/auth.types";
+import type { AssignMissionDto } from "./dto/assign-mission.dto";
 import type { CollectPaymentDto } from "./dto/collect-payment.dto";
+import type { CreateMissionDto } from "./dto/create-mission.dto";
 import type { ListMissionsDto } from "./dto/list-missions.dto";
 import type { RecordGpsDto } from "./dto/record-gps.dto";
 import type { RemitCashDto } from "./dto/remit-cash.dto";
@@ -50,6 +55,12 @@ type MissionRow = {
   expectedAmount: number;
   collectedAmount: number;
   remittedAmount: number;
+  // Colonnes GPS réellement lues par MISSION_COLUMNS. Les omettre ici était la
+  // cause exacte de `gps.at/latitude/longitude` toujours nuls : la vue ne
+  // pouvait pas lire des champs absents du type de ligne.
+  latitude: number | null;
+  longitude: number | null;
+  gpsAt: Date | null;
   updatedAt: Date;
 };
 
@@ -135,15 +146,149 @@ export class MissionsService {
     const hasMore = rows.length > take;
     const page = hasMore ? rows.slice(0, take) : rows;
     const last = page[page.length - 1];
+    const proofRequired = await this.proofRequiredFor(auth.companyId);
     return {
-      items: page.map((row) => this.toView(row)),
+      items: page.map((row) => this.toView(row, proofRequired)),
       nextCursor: hasMore && last ? encodeCursor(last.updatedAt, last.id) : null,
     };
   }
 
   async get(auth: AuthContext, id: string): Promise<MissionView> {
     const mission = await this.requireMission(auth, id);
-    return this.toView(mission);
+    return this.toView(mission, await this.proofRequiredFor(auth.companyId));
+  }
+
+  // -------------------------------------------------------------------------
+  // Création et affectation
+  // -------------------------------------------------------------------------
+
+  /**
+   * Crée une mission. Sans cet endpoint, aucun travail ne pouvait entrer dans le
+   * système par l'API : le pilote aurait dépendu d'insertions SQL manuelles.
+   */
+  async create(
+    auth: AuthContext,
+    dto: CreateMissionDto,
+    key: string | undefined,
+    requestId?: string
+  ): Promise<MissionView> {
+    this.assertPermission(auth.role, "createMission");
+    if (key) this.requireKey(key);
+
+    // Un livreur affecté dès la création doit être un membre actif de la MÊME
+    // entreprise : sinon l'affectation traverserait les tenants.
+    const assignedUserId = dto.assignedUserId
+      ? await this.requireAssignable(auth.companyId, dto.assignedUserId)
+      : null;
+
+    const run = async (tx: Prisma.TransactionClient) => {
+      const missionId = randomUUID();
+      await tx.mission.create({
+        data: {
+          id: missionId,
+          companyId: auth.companyId,
+          reference: dto.reference,
+          clientName: dto.clientName,
+          phone: dto.phone ?? null,
+          status: "A_AFFECTER",
+          assignedUserId,
+          expectedAmount: dto.expectedAmount ?? 0,
+          city: dto.city ?? null,
+          quartier: dto.quartier ?? null,
+          zone: dto.zone ?? null,
+          writtenAddress: dto.writtenAddress ?? null,
+          landmark: dto.landmark ?? null,
+          accessInstructions: dto.accessInstructions ?? null,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          companyId: auth.companyId,
+          userId: auth.userId,
+          action: "MISSION_CREATED",
+          entityType: "Mission",
+          entityId: missionId,
+          before: {},
+          after: {
+            reference: dto.reference,
+            clientName: dto.clientName,
+            expectedAmount: dto.expectedAmount ?? 0,
+            assignedUserId,
+          },
+          source: "API",
+          requestId: requestId ?? null,
+        },
+      });
+      return { missionId };
+    };
+
+    try {
+      const created = key
+        ? await this.idempotent(
+            auth,
+            operationScope("MISSION_CREATE", dto.reference),
+            key,
+            hashRequest({ reference: dto.reference, clientName: dto.clientName, expectedAmount: dto.expectedAmount ?? 0 }),
+            run
+          )
+        : await this.prisma.$transaction(run);
+      return await this.get(auth, created.missionId);
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ConflictException("Cette référence de mission existe déjà pour cette entreprise");
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Affecte (ou réaffecte) la mission à un livreur, ou la désaffecte (`null`).
+   * Le statut n'est pas modifié ici : la progression reste explicite et
+   * traçable via `/transition`.
+   */
+  async assign(
+    auth: AuthContext,
+    id: string,
+    dto: AssignMissionDto,
+    requestId?: string
+  ): Promise<MissionView> {
+    this.assertPermission(auth.role, "assignMission");
+    const current = await this.requireMission(auth, id);
+    const assignee = dto.assigneeUserId
+      ? await this.requireAssignable(auth.companyId, dto.assigneeUserId)
+      : null;
+
+    await this.prisma.$transaction(async (tx) => {
+      // CAS sur l'affectation courante : deux dispatcheurs ne peuvent pas
+      // s'écraser silencieusement.
+      const affected = await tx.$executeRaw`
+        UPDATE missions
+           SET "assignedUserId" = ${assignee},
+               "updatedAt" = NOW()
+         WHERE id = ${id}
+           AND "companyId" = ${auth.companyId}
+           AND "assignedUserId" IS NOT DISTINCT FROM ${current.assignedUserId}`;
+
+      if (affected !== 1) {
+        throw new ConflictException("L'affectation a changé entre-temps ; recharger et réessayer");
+      }
+
+      await tx.auditLog.create({
+        data: {
+          companyId: auth.companyId,
+          userId: auth.userId,
+          action: "MISSION_ASSIGNED",
+          entityType: "Mission",
+          entityId: id,
+          before: { assignedUserId: current.assignedUserId },
+          after: { assignedUserId: assignee },
+          source: "API",
+          requestId: requestId ?? null,
+        },
+      });
+    });
+
+    return this.get(auth, id);
   }
 
   // -------------------------------------------------------------------------
@@ -156,11 +301,12 @@ export class MissionsService {
     dto: TransitionDto,
     requestId?: string
   ): Promise<MissionView> {
-    assertAllowed(auth.role, "transitionMission");
+    this.assertPermission(auth.role, "transitionMission");
     const current = await this.requireMission(auth, id);
-    assertCanActOnMission(auth.role, auth.userId, current.assignedUserId);
+    this.assertScope(auth, current);
 
     const from = this.statusOf(current);
+    const proofRequired = await this.proofRequiredFor(auth.companyId);
     const to = dto.to;
 
     // La cible est déjà validée par le DTO ; on revérifie ici pour que la règle
@@ -173,7 +319,9 @@ export class MissionsService {
 
     if (to === "LIVREE") {
       try {
-        assertDeliveryClosable(this.toDomain(current, dto.proofId ?? current.proofId ?? undefined));
+        assertDeliveryClosable(
+          this.toDomain(current, proofRequired, dto.proofId ?? current.proofId ?? undefined)
+        );
       } catch (error) {
         throw new BadRequestException((error as Error).message);
       }
@@ -231,10 +379,11 @@ export class MissionsService {
    *   3. la clé d'idempotence rend la répétition inopérante.
    */
   async collect(auth: AuthContext, id: string, dto: CollectPaymentDto, key: string | undefined, requestId?: string) {
-    assertAllowed(auth.role, "collectPayment");
+    this.assertPermission(auth.role, "collectPayment");
     this.requireKey(key);
     const current = await this.requireMission(auth, id);
-    assertCanActOnMission(auth.role, auth.userId, current.assignedUserId);
+    this.assertScope(auth, current);
+    const proofRequired = await this.proofRequiredFor(auth.companyId);
 
     const operation = operationScope("PAYMENT", id);
     const requestHash = hashRequest({ id, collected: dto.collected });
@@ -244,8 +393,8 @@ export class MissionsService {
       if (!before) throw new NotFoundException();
 
       try {
-        assertPaymentAllowed(this.toDomain(before));
-        assertCollectAmount(this.toDomain(before), dto.collected);
+        assertPaymentAllowed(this.toDomain(before, proofRequired));
+        assertCollectAmount(this.toDomain(before, proofRequired), dto.collected);
       } catch (error) {
         throw new BadRequestException((error as Error).message);
       }
@@ -299,9 +448,10 @@ export class MissionsService {
 
   /** Remise de caisse. Interdite au rôle DRIVER (voir la matrice de permissions). */
   async remit(auth: AuthContext, id: string, dto: RemitCashDto, key: string | undefined, requestId?: string) {
-    assertAllowed(auth.role, "remitCash");
+    this.assertPermission(auth.role, "remitCash");
     this.requireKey(key);
     const current = await this.requireMission(auth, id);
+    const proofRequired = await this.proofRequiredFor(auth.companyId);
 
     const operation = operationScope("REMITTANCE", id);
     const requestHash = hashRequest({ id, amount: dto.amount });
@@ -311,7 +461,7 @@ export class MissionsService {
       if (!before) throw new NotFoundException();
 
       try {
-        assertRemittanceAmount(this.toDomain(before), dto.amount);
+        assertRemittanceAmount(this.toDomain(before, proofRequired), dto.amount);
       } catch (error) {
         throw new BadRequestException((error as Error).message);
       }
@@ -366,9 +516,9 @@ export class MissionsService {
    * envoyée tardivement n'est jamais présentée comme actuelle.
    */
   async recordGps(auth: AuthContext, id: string, dto: RecordGpsDto, requestId?: string): Promise<MissionView> {
-    assertAllowed(auth.role, "recordGps");
+    this.assertPermission(auth.role, "recordGps");
     const current = await this.requireMission(auth, id);
-    assertCanActOnMission(auth.role, auth.userId, current.assignedUserId);
+    this.assertScope(auth, current);
 
     const now = new Date();
     const measuredAt = dto.recordedAt ? new Date(dto.recordedAt) : now;
@@ -508,7 +658,53 @@ export class MissionsService {
     return row.status;
   }
 
-  private toDomain(row: MissionRow, proofId?: string): Mission {
+  /**
+   * Politique de preuve de l'entreprise. En l'absence de réglage, la preuve est
+   * exigée : le repli par défaut est le comportement le plus sûr.
+   */
+  private async proofRequiredFor(companyId: string): Promise<boolean> {
+    const setting = await this.prisma.setting.findUnique({ where: { companyId } });
+    return setting?.proofRequired ?? true;
+  }
+
+  /**
+   * Un rôle sans la permission est refusé en `403` (et non en `500`) : une
+   * décision d'autorisation n'est pas une erreur serveur.
+   */
+  private assertPermission(role: AppRole, permission: Permission): void {
+    if (!isAllowed(role, permission)) {
+      throw new ForbiddenException(`Rôle ${role} non autorisé pour ${permission}`);
+    }
+  }
+
+  /** Périmètre d'action sur une mission : `403`, jamais `500`. */
+  private assertScope(auth: AuthContext, mission: MissionRow): void {
+    try {
+      assertCanActOnMission(auth.role, auth.userId, mission.assignedUserId);
+    } catch {
+      throw new ForbiddenException("Mission hors du périmètre de cet utilisateur");
+    }
+  }
+
+  /**
+   * Vérifie qu'un utilisateur peut recevoir une mission : membre de la MÊME
+   * entreprise, actif, et dont le rôle autorise l'exécution d'une mission.
+   */
+  private async requireAssignable(companyId: string, userId: string): Promise<string> {
+    const membership = await this.prisma.membership.findFirst({ where: { companyId, userId } });
+    if (membership) {
+      const [role, user] = await Promise.all([
+        this.prisma.role.findUnique({ where: { id: membership.roleId } }),
+        this.prisma.user.findFirst({ where: { id: userId } }),
+      ]);
+      if (user?.isActive && role && isAppRole(role.code) && isAllowed(role.code, "transitionMission")) {
+        return user.id;
+      }
+    }
+    throw new BadRequestException("Livreur introuvable, inactif ou non habilité dans cette entreprise");
+  }
+
+  private toDomain(row: MissionRow, proofRequired: boolean, proofId?: string): Mission {
     const truth = isTruthStatus(row.gpsTruth) ? row.gpsTruth : "INDISPONIBLE";
     return {
       id: row.id,
@@ -516,9 +712,7 @@ export class MissionsService {
       clientName: row.clientName,
       address: {},
       status: this.statusOf(row),
-      // La politique de preuve est portée par les réglages de l'entreprise ;
-      // à défaut la preuve est exigée, ce qui est le comportement le plus sûr.
-      proofRequired: true,
+      proofRequired,
       proofId: proofId ?? row.proofId ?? undefined,
       money: normalizeMoneyState(row.expectedAmount, row.collectedAmount, row.remittedAmount),
       gpsTruth: truth,
@@ -526,8 +720,7 @@ export class MissionsService {
     };
   }
 
-  private toView(row: MissionRow): MissionView {
-    const truth: TruthStatus = isTruthStatus(row.gpsTruth) ? row.gpsTruth : "INDISPONIBLE";
+  private toView(row: MissionRow, proofRequired: boolean, now = Date.now()): MissionView {
     return {
       id: row.id,
       reference: row.reference,
@@ -536,15 +729,38 @@ export class MissionsService {
       status: this.statusOf(row),
       assignedUserId: row.assignedUserId,
       proofId: row.proofId,
-      proofRequired: true,
+      proofRequired,
       money: normalizeMoneyState(row.expectedAmount, row.collectedAmount, row.remittedAmount),
-      gps: {
-        truth,
-        at: row.updatedAt ? null : null,
-        latitude: null,
-        longitude: null,
-      },
+      gps: this.gpsView(row, now),
       updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  /**
+   * Projection GPS. Trois garanties, chacune testée au niveau HTTP :
+   *
+   *  1. les coordonnées réellement stockées sont renvoyées (elles ne l'étaient
+   *     pas : la vue ne lisait pas les colonnes qu'elle sélectionnait) ;
+   *  2. la fraîcheur est recalculée **à la lecture**, pas figée à l'écriture :
+   *     une position enregistrée « REEL » il y a une heure ne peut pas rester
+   *     présentée comme actuelle ;
+   *  3. au-delà de `GPS_MAX_AGE_MS`, la position n'est plus exposée comme
+   *     utilisable : `truth = INDISPONIBLE` et coordonnées nulles. L'horodatage
+   *     reste renseigné pour dire « dernière mesure connue, non exploitable ».
+   */
+  private gpsView(row: MissionRow, now = Date.now()): MissionView["gps"] {
+    const measuredAt = row.gpsAt;
+    if (!measuredAt) {
+      return { truth: "INDISPONIBLE", at: null, latitude: null, longitude: null };
+    }
+    const ageSeconds = Math.max(0, (now - measuredAt.getTime()) / 1000);
+    const truth: TruthStatus = gpsTruthFromAge(ageSeconds);
+    const usable = truth !== "INDISPONIBLE" && isUsableCoordinates(row.latitude, row.longitude);
+    return {
+      truth,
+      at: measuredAt.toISOString(),
+      latitude: usable ? row.latitude : null,
+      longitude: usable ? row.longitude : null,
     };
   }
 
