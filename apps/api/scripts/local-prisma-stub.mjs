@@ -152,36 +152,45 @@ export interface ModelDelegate<T> {
   createMany(args: { data: Record<string, unknown>[] | Record<string, unknown>; skipDuplicates?: boolean }): Promise<{ count: number }>;
   update(args: { where: WhereInput; data: Record<string, unknown>; select?: unknown }): Promise<T>;
   updateMany(args: { where?: WhereInput; data: Record<string, unknown> }): Promise<{ count: number }>;
-  upsert(args: {
-    where: WhereInput;
-    create: Record<string, unknown>;
-    update: Record<string, unknown>;
-  }): Promise<T>;
+  upsert(args: { where: WhereInput; create: Record<string, unknown>; update: Record<string, unknown> }): Promise<T>;
   delete(args: { where: WhereInput }): Promise<T>;
   deleteMany(args?: { where?: WhereInput }): Promise<{ count: number }>;
   aggregate(args?: Record<string, unknown>): Promise<Record<string, unknown>>;
   groupBy(args?: Record<string, unknown>): Promise<unknown[]>;
 }
 
-export type TransactionClient = Omit<PrismaClient, "$transaction" | "$connect" | "$disconnect" | "$on" | "$use" | "$extends">;
-
 export class PrismaClient {
 ${models.map(delegate).join("\n")}
   $transaction<R>(fn: (tx: TransactionClient) => Promise<R>): Promise<R>;
-  $queryRaw<T = unknown>(query: TemplateStringsArray | string, ...values: unknown[]): Promise<T>;
-  $executeRaw(query: TemplateStringsArray | string, ...values: unknown[]): Promise<number>;
+  $queryRaw<T = unknown>(query: TemplateStringsArray | Prisma.Sql, ...values: unknown[]): Promise<T>;
+  $queryRawUnsafe<T = unknown>(query: string, ...values: unknown[]): Promise<T>;
+  $executeRaw(query: TemplateStringsArray | Prisma.Sql, ...values: unknown[]): Promise<number>;
+  $executeRawUnsafe(query: string, ...values: unknown[]): Promise<number>;
   $connect(): Promise<void>;
   $disconnect(): Promise<void>;
   $on(event: string, callback: (...args: unknown[]) => void): void;
   $extends(extension: unknown): PrismaClient;
 }
 
-export const Prisma = {
-  PrismaClient: PrismaClient as unknown as new (options?: unknown) => PrismaClient,
-  sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({ strings, values }),
-  raw: (value: unknown) => value,
-  join: (values: unknown[]) => values,
-};
+export type TransactionClient = Omit<PrismaClient, "$transaction" | "$connect" | "$disconnect" | "$on" | "$use" | "$extends">;
+
+type PrismaClientCtor = new (options?: unknown) => PrismaClient;
+
+/**
+ * Espace de noms Prisma. Comme le client reel, il porte a la fois des types
+ * (Prisma.Sql) et des valeurs (Prisma.sql, Prisma.raw, Prisma.join).
+ * Un simple objet exporte ne suffirait pas : Prisma.Sql est un TYPE.
+ */
+export namespace Prisma {
+  export type Sql = { readonly __sql: string; readonly values: readonly unknown[] };
+  export const PrismaClient: PrismaClientCtor;
+  export const sql: (strings: TemplateStringsArray, ...values: unknown[]) => Sql;
+  export const raw: (value: string) => Sql;
+  export const join: (values: Sql[], separator?: string) => Sql;
+  export const empty: Sql;
+}
+
+export type PrismaClientKnownRequestError = Error & { code?: string };
 `;
 
 const output = `${header}\n${enumBlocks}\n${modelBlocks}\n${runtime}`;

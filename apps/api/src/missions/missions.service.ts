@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { createHash } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import {
   assertAcceptableGpsTimestamp,
   assertAllowed,
@@ -67,11 +68,18 @@ export type MissionView = {
   updatedAt: string;
 };
 
-const MISSION_COLUMNS = `
-  id, "companyId", reference, "clientName", phone, status, "assignedUserId", "proofId",
-  "gpsTruth", "expectedAmount", "collectedAmount", "remittedAmount", "updatedAt",
-  latitude, longitude, "gpsAt"
-`;
+/**
+ * Liste de colonnes constante.
+ *
+ * Elle est injectée comme SQL littéral (`Prisma.raw`) et **jamais** comme
+ * paramètre : dans un littéral étiqueté, une interpolation est transformée en
+ * valeur liée, ce qui produirait `SELECT $1 FROM missions`. Le contenu étant une
+ * constante du code et non une entrée utilisateur, l'injection littérale ne
+ * présente pas de risque.
+ */
+const MISSION_COLUMNS = `id, "companyId", reference, "clientName", phone, status,
+  "assignedUserId", "proofId", "gpsTruth", "expectedAmount", "collectedAmount",
+  "remittedAmount", "updatedAt", latitude, longitude, "gpsAt"`;
 
 @Injectable()
 export class MissionsService {
@@ -89,38 +97,39 @@ export class MissionsService {
     }
 
     const take = query.take ?? 25;
-    const conditions: string[] = [`"companyId" = $1`];
-    const params: unknown[] = [auth.companyId];
+
+    // Fragments composés via Prisma.sql : chaque valeur devient un paramètre lié,
+    // jamais du texte concaténé dans la requête.
+    const conditions: Prisma.Sql[] = [Prisma.sql`"companyId" = ${auth.companyId}`];
 
     // Un livreur ne voit que SES missions. Le filtre est appliqué côté serveur :
     // masquer l'entrée dans l'interface ne protège rien.
     if (auth.role === "DRIVER") {
-      params.push(auth.userId);
-      conditions.push(`"assignedUserId" = $${params.length}`);
+      conditions.push(Prisma.sql`"assignedUserId" = ${auth.userId}`);
     }
     if (query.status) {
-      params.push(query.status);
-      conditions.push(`status = $${params.length}::"MissionStatus"`);
+      conditions.push(Prisma.sql`status = ${query.status}::"MissionStatus"`);
     }
     if (query.search) {
-      params.push(`%${query.search.replace(/[%_\\]/g, (m) => `\\${m}`)}%`);
-      conditions.push(`("reference" ILIKE $${params.length} OR "clientName" ILIKE $${params.length})`);
+      const pattern = `%${query.search.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
+      conditions.push(
+        Prisma.sql`("reference" ILIKE ${pattern} OR "clientName" ILIKE ${pattern})`
+      );
     }
     // Curseur (updatedAt, id) : stable même si des lignes sont insérées.
     if (query.cursor) {
       const decoded = decodeCursor(query.cursor);
       if (!decoded) throw new BadRequestException("Curseur invalide");
-      params.push(decoded.updatedAt, decoded.id);
-      conditions.push(`("updatedAt", id) < ($${params.length - 1}::timestamptz, $${params.length}::text)`);
+      conditions.push(
+        Prisma.sql`("updatedAt", id) < (${decoded.updatedAt}::timestamptz, ${decoded.id}::text)`
+      );
     }
 
-    params.push(take + 1);
     const rows = await this.prisma.$queryRaw<MissionRow[]>(
-      `SELECT ${MISSION_COLUMNS} FROM missions
-        WHERE ${conditions.join(" AND ")}
-        ORDER BY "updatedAt" DESC, id DESC
-        LIMIT $${params.length}`,
-      ...params
+      Prisma.sql`SELECT ${Prisma.raw(MISSION_COLUMNS)} FROM missions
+                  WHERE ${Prisma.join(conditions, " AND ")}
+                  ORDER BY "updatedAt" DESC, id DESC
+                  LIMIT ${take + 1}`
     );
 
     const hasMore = rows.length > take;
@@ -471,7 +480,7 @@ export class MissionsService {
     id: string
   ): Promise<MissionRow | null> {
     const rows = await tx.$queryRaw<MissionRow[]>`
-      SELECT ${MISSION_COLUMNS} FROM missions
+      SELECT ${Prisma.raw(MISSION_COLUMNS)} FROM missions
        WHERE id = ${id} AND "companyId" = ${companyId}
        FOR UPDATE`;
     return rows[0] ?? null;
@@ -479,7 +488,7 @@ export class MissionsService {
 
   private async requireMission(auth: AuthContext, id: string): Promise<MissionRow> {
     const rows = await this.prisma.$queryRaw<MissionRow[]>`
-      SELECT ${MISSION_COLUMNS} FROM missions
+      SELECT ${Prisma.raw(MISSION_COLUMNS)} FROM missions
        WHERE id = ${id} AND "companyId" = ${auth.companyId}`;
     const mission = rows[0];
     // 404 plutôt que 403 : ne révèle pas l'existence d'une ressource d'un autre
