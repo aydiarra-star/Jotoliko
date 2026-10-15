@@ -2,14 +2,16 @@
 
 **Date** : 2026-10-15
 **Branche** : `arena/dd76021f-jotoliko` (depuis `main` = `3b0f3b7`)
-**Périmètre** : audit, réconciliation, correction, tests réels, préparation au pilote
-**PR produite** : [#4](https://github.com/aydiarra-star/Jotoliko/pull/4) — **4/4 vérifications vertes**
-**PR préservée** : [#3](https://github.com/aydiarra-star/Jotoliko/pull/3) — intacte
-**Ampleur** : 97 fichiers, +17 716 / −408 lignes depuis `main`
+**Périmètre** : audit, réconciliation, correction, tests réels, préparation opérationnelle
+**PR produite** : [#4](https://github.com/aydiarra-star/Jotoliko/pull/4) — **5/5 vérifications vertes**
+**PR préservée** : [#3](https://github.com/aydiarra-star/Jotoliko/pull/3) — intacte, ouverte
+**Ampleur** : 87 commits, 107 fichiers, **+21 463 / −408** lignes depuis `main` (ce rapport inclus, mesuré avant de l'écrire)
 
 > **Principe de rédaction.** Chaque affirmation de ce rapport renvoie à une
 > commande exécutée ou à une vérification CI consultable. Ce qui n'a pas été
 > exécuté est écrit comme non exécuté. **Aucune affirmation de production.**
+> Les mesures publiées sont accompagnées de leur portée : une restauration
+> chronométrée sur une base de test n'est pas un RTO de production.
 
 ---
 
@@ -17,32 +19,52 @@
 
 ### **NOT READY — production**
 
-Non déployable en production. Aucune production n'existe, aucune sauvegarde
-planifiée n'est en place, la politique de rétention des pièces justificatives
-n'est pas arrêtée, aucune supervision n'est configurée, et l'objectif de reprise
-(RTO/RPO) n'a jamais été mesuré.
+Non déployable en production. Les raisons ne sont pas des réserves de forme :
+
+- aucun environnement d'exploitation n'existe (ni staging, ni production) ;
+- aucune sauvegarde planifiée de production n'existe, donc aucun RPO réel ;
+- aucune alerte n'est branchée sur un canal joignable, et aucun destinataire
+  n'est désigné ;
+- la politique de rétention des pièces justificatives n'est pas arrêtée par le
+  client (§ 8) ;
+- les seuls RTO mesurés le sont sur une base de test (§ 7.5) ;
+- aucun encaissement n'est confirmé par un fournisseur de paiement : tout est
+  déclaratif (§ 9.2) ;
+- douze avis de dépendances subsistent, dont trois élevés côté API, dont le
+  correctif proposé est une montée majeure non appliquée sans autorisation (§ 5.6).
 
 ### **READY FOR TECHNICAL PILOT — sous conditions**
 
-Le socle technique est démontré par l'exécution : **107 tests HTTP de bout en
-bout** sur un **PostgreSQL 16 réel**, avec le serveur tel qu'il est livré
-(`node apps/api/dist/apps/api/src/main.js`), les vrais gardes, la vraie
-validation et le vrai client Prisma — **107 réussis, 0 échec, 0 ignoré**. La
-restauration d'une sauvegarde est réellement exécutée en CI (`pg_dump` puis
-`pg_restore` dans une base isolée, avec contrôle des données, des contraintes et
-des relations).
+Le socle technique est **démontré par l'exécution**, pas par la compilation :
+
+- **115 tests HTTP de bout en bout** sur un **PostgreSQL 16 réel**, avec le
+  serveur tel qu'il est livré (`node apps/api/dist/apps/api/src/main.js`), les
+  vrais gardes, la vraie validation et le vrai client Prisma — **115 réussis,
+  0 échec, 0 ignoré** (annotation `E2E-BILAN`, § 5.1) ;
+- **170 tests unitaires** locaux (plus 1 ignoré, faute de base locale) ;
+- **26 contrôles HTTP hors ligne** et, en CI, la **chaîne de sauvegarde et de
+  restauration réellement exécutée et chronométrée** (§ 7.2) ;
+- le **stockage des preuves de livraison** écrit de vrais fichiers, avec
+  empreinte vérifiée après restauration.
 
 Un pilote **technique** — équipe restreinte, périmètre limité, objectif de
 validation terrain, tolérance aux incidents — est soutenable **aux conditions du
-§ 11.1**.
+§ 13.1**.
 
 ### **NOT READY — pilote opérationnel contrôlé**
 
-Un pilote opérationnel (livraisons réelles, espèces réelles, preuves faisant
-foi) exige un environnement de staging validé, une sauvegarde **base + volume**
-vérifiée par une restauration, une politique de rétention arrêtée et des sondes
-branchées. **Aucun de ces quatre éléments n'existe**, et ils dépendent de
-ressources externes non fournies (§ 7). Les conditions sont listées au § 11.2.
+Un pilote opérationnel (livraisons réelles, espèces réelles, preuves faisant foi)
+exige en plus : un staging provisionné et validé, une sauvegarde **base + volume**
+planifiée **et** restaurée sur cet environnement, une politique de rétention
+arrêtée, des alertes aboutissant à un responsable, et une décision explicite sur
+l'usage hors ligne. **Aucun de ces éléments n'existe**, et chacun dépend d'une
+ressource ou d'une décision externe (§ 10, § 11, § 13.2).
+
+| Niveau | Décision | Ce qui la fonde |
+| --- | --- | --- |
+| Production | **NOT READY** | Aucun environnement, sauvegarde planifiée, alerte, rétention arrêtée ni RTO réel |
+| Pilote technique | **READY sous conditions** | 115 cas HTTP réels sur PostgreSQL 16, restauration mesurée, preuves réellement stockées |
+| Pilote opérationnel contrôlé | **NOT READY** | Staging, sauvegarde planifiée + alerte, rétention et décision hors ligne non acquis |
 
 ---
 
@@ -71,40 +93,44 @@ Prisma, composition du SQL via `Prisma.Sql` et colonnes en SQL littéral.
 
 ### 3.2 Industrialisation de la CI
 
-`30fb88c`, `48dfa56`, `a588630`, `7a612f1` — typecheck lisible (erreurs publiées
-en annotations), suites base séquentielles, type de transaction officiel, échecs
-e2e publiés en annotations et en artefact, **bilan des tests exécutés publié en
-annotation même en cas de succès** (le nombre de cas exécutés est vérifiable via
-l'API GitHub, sans télécharger d'artefact).
+`30fb88c`, `48dfa56`, `a588630`, `7a612f1`, `bf13afd` — typecheck lisible
+(erreurs publiées en annotations), suites base séquentielles, type de transaction
+officiel, échecs e2e publiés en annotations **et** en artefact, **bilan des tests
+exécutés publié en annotation même en cas de succès**, et repère d'échec fondé sur
+le **code de sortie** de la suite (une suite verte ne doit jamais porter
+d'annotation de niveau erreur — défaut réellement observé, puis corrigé).
 
 ### 3.3 Suite HTTP de bout en bout et GPS
 
 `fc04dbe` — création de la suite HTTP (auth, missions, caisse, GPS, isolation,
 sécurité, limitation de débit) contre l'API réellement démarrée ; **correction du
-GPS** : la vue recalcule la fraîcheur à chaque lecture et n'expose les
-coordonnées que tant qu'elles sont exploitables ; violations de périmètre
-converties en `403` (elles produisaient un `500`).
+GPS** : la vue recalcule la fraîcheur à chaque lecture et n'expose les coordonnées
+que tant qu'elles sont exploitables ; violations de périmètre converties en `403`.
 
 ### 3.4 Stockage réel des preuves
 
 `9488140` — table `proof_files` + migration additive ; module
-`apps/api/src/proofs/**` ; validation par **signature binaire** ; écriture
-atomique `0600` ; clé déterministe `<entreprise>/<mission>/<empreinte>.<ext>` ;
-routes `POST/GET/DELETE /missions/:id/proofs[/:proofId]` ; flux de téléchargement
-non mis en cache ; `410` si le fichier manque (ligne conservée) ; suppression
-logique auditée ; **pagination réparée** (le curseur produit par l'API faisait 84
-caractères pour un DTO qui le bornait à 64 : toute deuxième page renvoyait `400`).
+`apps/api/src/proofs/**` ; validation par **signature binaire** ; écriture atomique
+`0600` ; clé déterministe `<entreprise>/<mission>/<empreinte>.<ext>` ; routes
+`POST/GET/DELETE /missions/:id/proofs[/:proofId]` ; flux de téléchargement non mis
+en cache ; `410` si le fichier manque (ligne conservée) ; suppression logique
+auditée ; **pagination réparée** (curseur de 84 caractères pour un DTO qui le
+bornait à 64 : toute deuxième page renvoyait `400`).
 
-### 3.5 Cette phase finale
+### 3.5 Phase finale de préparation opérationnelle
 
 | Commit | Objet |
 | --- | --- |
 | `3e31499` | Démarrage réel de l'API vérifié : `ProofsModule` ne fournissait pas les dépendances de la garde ; substitut Prisma local rendu exécutable ; identifiant de corrélation posé avant l'analyse du corps ; premier contrôle HTTP hors ligne |
 | `53b5d79` | Contrôle hors ligne étendu : `X-Forwarded-For` ignoré sans proxy déclaré (pas de contournement de la limitation) et honoré derrière un proxy déclaré ; exécution en CI |
 | `4fb3518` | **Correction de la cause racine du dépôt de preuves** (§ 4.1) ; démarrage résilient à une base indisponible ; diagnostics 5xx |
-| `1b9e5ce` | Contrat d'API, modèle de sécurité et architecture de déploiement réécrits sur l'état réel ; `.env.example` réduit aux variables réellement lues ; deux attentes fausses de la suite de sauvegarde corrigées |
+| `1b9e5ce` | Contrat d'API, modèle de sécurité et architecture de déploiement réécrits sur l'état réel ; `.env.example` réduit aux variables réellement lues |
 | `7a612f1` | Bilan des tests publié en annotation, succès compris |
-| `…` (ci-dessous) | Repère d'échec fondé sur le code de sortie de la suite : la republication du journal en annotations d'erreur ne s'applique plus qu'aux exécutions réellement en échec — une suite verte apparaissait sinon avec des annotations de niveau erreur |
+| `bf13afd` | Repère d'échec fondé sur le code de sortie de la suite |
+| `a7f49dd` | **Supervision du volume de preuves** (`/health/ready` vérifie base **et** stockage), seuil configurable, socle d'exploitation `ops/`, scripts de sauvegarde, restauration, purge et sonde ; test système des scripts ; exercice d'exploitation quotidien en CI ; runbook, politique de rétention, hypothèses RPO/RTO |
+| `96a43ca` | Défauts révélés par la première exécution réelle des scripts (§ 4.4) ; contrôle statique `checkJs` des scripts d'exploitation |
+| `a335edb` | Deux attentes fausses de la suite système corrigées, non contournées |
+| `382fd23` | Mesures de restauration publiées depuis un fichier, et non depuis le journal — la restitution affichait sinon « aucune mesure » alors que la restauration avait été mesurée |
 
 ---
 
@@ -118,34 +144,34 @@ suivants (liste, téléchargement, non-duplication) échouaient en cascade.
 **Cause racine, démontrée.** La validation d'un segment de clé de stockage le
 bornait à 64 caractères, alors que la clé composée par `keyFor`
 (`<empreinte SHA-256>.<extension>`) en fait **68** (jpg/png/pdf) ou **69** (webp).
-Le contrôle refusait donc toute écriture, avec un `500` muet
-(« Clé de stockage invalide »). Le schéma, la migration, la table et les tests de
-schéma étaient corrects : c'est l'accord entre la composition de la clé et sa
-validation qui manquait.
+Le contrôle refusait donc toute écriture, avec un `500` muet (« Clé de stockage
+invalide »). Le schéma, la migration, la table et les tests de schéma étaient
+corrects : c'est l'accord entre la composition de la clé et sa validation qui
+manquait.
 
-**Portée.** Cette fonctionnalité — le stockage réel des preuves, exigence
-centrale de la mission — était **entièrement inopérante** tout en donnant une CI
-verte sur tout le reste. C'est l'illustration exacte de la règle « la compilation
-n'est pas la preuve du fonctionnement ».
+**Portée.** Cette fonctionnalité — le stockage réel des preuves, exigence centrale
+de la mission — était **entièrement inopérante** tout en donnant une CI verte sur
+tout le reste. Illustration exacte de la règle « la compilation n'est pas la
+preuve du fonctionnement ».
 
 **Correction.** La borne est **déduite** de ce que `keyFor` produit réellement
-(`MAX_STORAGE_SEGMENT_LENGTH = 69`, constante exportée et justifiée), et le
-message nomme le segment refusé. Ajout de `tests/unit/proof-storage.test.ts`
-(14 cas, sans base de données) qui compose la clé **réelle** avant de la valider,
-vérifie l'aller-retour disque avec empreinte recalculée, les permissions `0600`,
-l'absence de fichier temporaire, l'idempotence du chemin et le refus de toute
-sortie du répertoire. **Vérifié** : ce test échoue (6 cas) avec l'ancienne borne
-et passe avec la nouvelle.
+(`MAX_STORAGE_SEGMENT_LENGTH = 69`, constante exportée et justifiée), et le message
+nomme le segment refusé. `tests/unit/proof-storage.test.ts` (aujourd'hui **19
+cas**, sans base de données) compose la clé **réelle** avant de la valider, vérifie
+l'aller-retour disque avec empreinte recalculée, les permissions `0600`, l'absence
+de fichier temporaire, l'idempotence du chemin, le refus de sortir du répertoire,
+et — ajoutés dans cette phase — le comportement en volume non inscriptible, en
+chemin non-répertoire et en espace insuffisant.
 
 ### 4.2 L'API ne pouvait pas se déclarer « non prête »
 
 `PrismaService.onModuleInit` laissait un échec de connexion faire sortir le
-processus. Conséquences réelles : la branche dégradée **documentée et
-implémentée** de `/health/ready` (`503`, `checks.database = "unreachable"`) était
-**inatteignable** ; une coupure passagère de la base faisait repartir le service
-en boucle de redémarrage ; et le contrôle hors ligne échouait en CI (il passe avec
-un substitut qui ne se connecte jamais réellement — le contrôle était donc
-trompeur au moment précis où il comptait).
+processus. Conséquences réelles : la branche dégradée **documentée et implémentée**
+de `/health/ready` (`503`, `checks.database = "unreachable"`) était
+**inatteignable** ; une coupure passagère de la base faisait repartir le service en
+boucle de redémarrage ; et le contrôle hors ligne échouait en CI (il passe avec un
+substitut qui ne se connecte jamais réellement — le contrôle était donc trompeur au
+moment précis où il comptait).
 
 La disponibilité de la base n'est plus une condition de démarrage : tentative
 bornée à 10 s, erreur journalisée, `/health/ready` renvoie `503`. **La
@@ -154,20 +180,49 @@ implicite, `PORT` invalide, répertoire de preuves inutilisable ⇒ pas de déma
 
 ### 4.3 Défauts corrigés lors des phases précédentes
 
-- **Pages 2+ de la liste des missions impossibles** : le curseur produit (84
-  caractères) dépassait la borne `@MaxLength(64)` du DTO ⇒ `400` systématique.
+- **Pages 2+ de la liste des missions impossibles** : curseur de 84 caractères pour
+  une borne `@MaxLength(64)` ⇒ `400` systématique.
 - **GPS jamais renvoyé** : `gps.at`, `latitude`, `longitude` valaient `null` en
   permanence malgré des colonnes lues ; une position périmée pouvait être
-  présentée comme actuelle. Corrigé : fraîcheur recalculée à la lecture,
-  coordonnées exposées seulement tant qu'elles sont exploitables.
+  présentée comme actuelle.
 - **Violations de périmètre en `500`** : un livreur agissant hors de ses missions
   produisait une erreur interne au lieu d'un refus `403`.
 - **API impossible à démarrer dès que les routes de preuves existaient** :
-  `ProofsModule` déclarait son contrôleur sans fournir les dépendances de la
-  garde (`AuthGuard` attend `RoleResolver`).
-- **Substitut Prisma local générant du JavaScript invalide** (`company: any;`) :
-  l'API ne pouvait pas démarrer hors ligne, donc aucun contrôle local n'était
-  possible.
+  `ProofsModule` déclarait son contrôleur sans fournir les dépendances de la garde.
+- **Substitut Prisma local générant du JavaScript invalide** : aucun contrôle local
+  n'était possible hors ligne.
+- **Annotations d'échec sur un job vert** : le repli « journal → annotations »
+  s'appliquait aussi en cas de succès (10 annotations d'erreur sur un job e2e vert).
+  Le **code de sortie** est désormais la seule source de vérité.
+
+### 4.4 Défauts corrigés révélés par la première exécution réelle des scripts
+
+Ces trois défauts partagent une même propriété : **aucune vérification locale ne
+pouvait les voir**. Ils ont été trouvés en exécutant réellement les scripts
+d'exploitation sur PostgreSQL, en CI — ce qui justifie la suite système ajoutée.
+
+1. **Toute sauvegarde échouait** (`delimiter is not defined`) : une fonction du
+   socle utilisait `delimiter` sans que l'import soit présent. Le code passait la
+   relecture et la vérification syntaxique ; il n'était jamais exécuté localement,
+   faute de PostgreSQL et de client `pg_dump` dans l'environnement de développement.
+2. **Rapport et messages mélangés** : la sortie standard portait à la fois les
+   annotations et le rapport JSON, ce qui rendait `node ops/backup.mjs | jq`
+   impossible et obligeait les tests à deviner où commence le JSON. La sortie
+   standard porte désormais uniquement le rapport ; messages et annotations
+   partent sur la sortie d'erreur (GitHub interprète les commandes sur les deux
+   flux : les annotations restent publiées).
+3. **Refus attendus publiés en erreur** : la purge invoquée volontairement sans
+   date limite, un déchiffrement provoqué avec une clé erronée, une configuration
+   incomplète ou une sonde face à un service absent produisaient des annotations
+   `error` sur des jobs verts — la même erreur que celle corrigée au § 4.3. Un refus
+   attendu par un test ne publie plus rien ; le workflow neutralise la publication
+   pour l'invocation qu'il provoque lui-même.
+
+**Contrôle ajouté pour que la classe de défaut n° 1 ne se reproduise pas** :
+`ops/tsconfig.json` active `checkJs` sur `ops/` (`npm run ops:typecheck`, exécuté en
+CI, erreurs publiées en annotations). Il a trouvé six erreurs de typage réelles au
+premier passage, toutes corrigées. Les fonctions pures qui n'étaient pas testées le
+sont désormais, à commencer par celle où vivait l'import manquant.
 
 ---
 
@@ -176,17 +231,17 @@ implicite, `PORT` invalide, répertoire de preuves inutilisable ⇒ pas de déma
 ### 5.1 Bout en bout, sur PostgreSQL 16 réel (CI)
 
 Job « Tests HTTP de bout en bout (API + PostgreSQL 16) » —
-[run 38714436073 / job 116353553109](https://github.com/aydiarra-star/Jotoliko/actions/runs/38714436073/job/116353553109)
-— **pass**, 1 min 32.
+[run 38721134506 / job 116375687090](https://github.com/aydiarra-star/Jotoliko/actions/runs/38721134506/job/116375687090)
+— **pass**, 1 min 14.
 
 Le serveur est démarré **tel qu'il est livré** et interrogé par de vraies requêtes
 HTTP : chaîne garde d'authentification → garde de permissions → validation →
 service → Prisma → SQL → contraintes. **Aucune imitation de base, de garde ou de
 service.**
 
-Bilan publié par la CI elle-même (annotation `E2E-BILAN`, vérifiable) :
+Bilan publié par la CI elle-même (annotation `E2E-BILAN`, vérifiable par API) :
 
-> cas exécutés : **107** — réussis : **107** — échoués : **0** — ignorés : **0**
+> cas exécutés : **115** — réussis : **115** — échoués : **0** — ignorés : **0**
 
 | Fichier | Cas | Couverture |
 | --- | --- | --- |
@@ -194,56 +249,60 @@ Bilan publié par la CI elle-même (annotation `E2E-BILAN`, vérifiable) :
 | `missions.e2e.test.ts` | 22 | création, affectation, transitions autorisées **et refusées**, preuve exigée avant clôture, pagination par curseur |
 | `cash.e2e.test.ts` | 15 | encaissement, remise, concurrence, idempotence, non-duplication |
 | `gps.e2e.test.ts` | 13 | coordonnées valides, hors bornes, données absentes, position périmée |
-| `isolation.e2e.test.ts` | 10 | cloisonnement entre entreprises (`404`, jamais `403`) |
 | `proofs.e2e.test.ts` | 15 | dépôt, **fichier réellement sur le disque (empreinte recalculée)**, absence de contenu dans les métadonnées, en-têtes de téléchargement, `415`/`413`/`400`, non-duplication, `410`, suppression logique, périmètre |
-| `security.e2e.test.ts` | 12 | CORS, en-têtes, validation stricte, non-divulgation |
+| `security.e2e.test.ts` | 12 | CORS, en-têtes, validation stricte, non-divulgation, **et désormais la sonde de disponibilité du volume de preuves** |
+| `isolation.e2e.test.ts` | 10 | cloisonnement entre entreprises (`404`, jamais `403`) |
+| `backup-restore.e2e.test.ts` | 2 | sauvegarde et restauration réellement exécutées (§ 7.2) |
 | `rate-limit.e2e.test.ts` | 2 | quota respecté, en-tête `X-Forwarded-For` |
-| `backup-restore.e2e.test.ts` | 2 | **sauvegarde et restauration réellement exécutées** (§ 7.2) |
+| `ops-scripts.e2e.test.ts` | 8 | **exécution réelle des quatre scripts d'exploitation** : sauvegarde base + volume, restauration chronométrée avec vérification des empreintes, chiffrement et refus d'une clé erronée, purge (refus sans date limite, simulation, exécution), sonde disponible / dégradée / injoignable |
 
-### 5.2 Autres vérifications CI (toutes vertes)
+### 5.2 Les cinq vérifications de la PR #4 (toutes vertes)
 
 | Vérification | Résultat | Durée | Lien |
 | --- | --- | --- | --- |
-| API (Prisma, migrations, build) | ✅ pass | 1 min 31 | [job](https://github.com/aydiarra-star/Jotoliko/actions/runs/38714436073/job/116353553340) |
-| Tests HTTP de bout en bout (API + PostgreSQL 16) | ✅ pass | 1 min 32 | [job](https://github.com/aydiarra-star/Jotoliko/actions/runs/38714436073/job/116353553109) |
-| Reality tests sur PostgreSQL 16 réel | ✅ pass | 57 s | [job](https://github.com/aydiarra-star/Jotoliko/actions/runs/38714436182/job/116353553427) |
-| Site + invariants + PostgreSQL embarqué | ✅ pass | 1 min 1 | [job](https://github.com/aydiarra-star/Jotoliko/actions/runs/38714436182/job/116353553922) |
+| API (Prisma, migrations, build) | ✅ pass | 57 s | [job 116375686746](https://github.com/aydiarra-star/Jotoliko/actions/runs/38721134506/job/116375686746) |
+| Tests HTTP de bout en bout (API + PostgreSQL 16) | ✅ pass | 1 min 14 | [job 116375687090](https://github.com/aydiarra-star/Jotoliko/actions/runs/38721134506/job/116375687090) |
+| Sauvegarde, restauration mesurée et purge (base de test) | ✅ pass | 1 min 3 | [job 116375687091](https://github.com/aydiarra-star/Jotoliko/actions/runs/38721134484/job/116375687091) |
+| Reality tests sur PostgreSQL 16 réel | ✅ pass | 56 s | [job 116375688101](https://github.com/aydiarra-star/Jotoliko/actions/runs/38721134717/job/116375688101) |
+| Site + invariants + PostgreSQL embarqué | ✅ pass | 1 min 3 | [job 116375687840](https://github.com/aydiarra-star/Jotoliko/actions/runs/38721134717/job/116375687840) |
 
 Le job API exécute en plus, sur une base migrée par `prisma migrate deploy` :
-validation du schéma, génération du client, détection de dérive, typecheck
-(erreurs publiées en annotations), build, vérification du point d'entrée démarré
-et **contrôle HTTP hors ligne** (24 vérifications, § 5.4).
+validation du schéma, génération du client, **détection de dérive schéma ⇄
+migrations**, typecheck TypeScript, **typecheck `checkJs` des scripts
+d'exploitation**, build, vérification du point d'entrée démarré et **contrôle HTTP
+hors ligne** (§ 5.4).
 
 **Aucun test n'est ignoré en CI** : le bilan indique `ignorés : 0`.
 
-### 5.3 Vérifications locales (cet environnement)
+### 5.3 Vérifications locales (cet environnement, dernier état)
 
 | Commande | Résultat observé |
 | --- | --- |
-| `npm test` | **6 fichiers — 128 réussis, 1 ignoré, 0 échec** (129 cas) |
+| `npm test` | **7 fichiers — 170 réussis, 1 ignoré, 0 échec** (171 cas) |
 | `npm run typecheck` | **0 erreur** |
 | `npm run api:typecheck` | **0 erreur** |
+| `npm run ops:typecheck` | **0 erreur** (`checkJs` sur `ops/`) |
 | `npm run api:build` | succès (`dist/apps/api/src/main.js`) |
-| `npm run api:smoke` | **24 / 24 contrôles réussis** |
-| `npm run build` (site) | non exécutable ici (polices Google hors périmètre réseau) → **exécuté en CI — succès**, voir job « Site + invariants » |
+| `npm run api:smoke` | **26 / 26 contrôles réussis** |
+| `node ops/backup.mjs --dry-run` | simulation, aucune écriture, configuration refusée si incomplète |
+| `npm run build` (site) | non exécutable ici (polices Google hors périmètre réseau) → **exécuté en CI — succès** |
 
-Répartition locale, qui recoupe le total : 50 (`domain`) + 23 (`database`) + 8
-(`schema-drift`) + 29 (`tracking`) + 5 (`core`) + 14 (`proof-storage`, nouveau) =
-129 cas. Le seul cas ignoré localement est l'entrelacement de deux connexions
-simultanées : PGlite est mono-connexion ; il **s'exécute réellement en CI** sur
-`postgres:16`.
+Le seul cas ignoré localement est l'entrelacement de deux connexions simultanées :
+PGlite est mono-connexion ; il **s'exécute réellement en CI** sur `postgres:16`.
 
-### 5.4 Contrôle HTTP hors ligne — `npm run api:smoke`
+### 5.4 Contrôle HTTP hors ligne — `npm run api:smoke` (26 contrôles)
 
-Exécuté contre l'API réellement démarrée, **sans base de données**, il couvre ce
-qui ne dépend pas de la base et complète la suite de bout en bout : vivacité,
-disponibilité dégradée (`503`), refus sans jeton, jeton expiré / daté dans le
-futur / signé avec un autre secret / à charge utile altérée, validation des
-entrées, propriété non déclarée, corps illisible corrélé, charge hors limite
-(`413`), origine autorisée / refusée, préflight, en-têtes de durcissement,
-identifiant de corrélation conservé, route inconnue (`404`), routes de preuves
-protégées, absence de secret dans les réponses, limitation de débit (5 connexions
-puis `429`), et la **confiance au proxy dans les deux sens** :
+Exécuté contre l'API réellement démarrée, **sans base de données exploitable**, il
+couvre ce qui ne dépend pas de la base : vivacité ; disponibilité cohérente avec
+l'état réel de la base (`503` et `checks.database = "unreachable"` quand elle est
+absente) ; **sonde du volume de preuves** (espace libre publié, volume rendu non
+inscriptible ⇒ `503` et `checks.storage ≠ ok`) ; refus sans jeton ; jeton expiré /
+daté dans le futur / signé avec un autre secret / à charge utile altérée ;
+validation des entrées ; propriété non déclarée ; corps illisible corrélé ; charge
+hors limite (`413`) ; origine autorisée / refusée ; préflight ; en-têtes de
+durcissement ; identifiant de corrélation conservé ; route inconnue (`404`) ;
+routes de preuves protégées ; absence de secret dans les réponses ; limitation de
+débit (5 connexions puis `429`) ; et la **confiance au proxy dans les deux sens** :
 
 - sans proxy déclaré, six adresses annoncées différentes ne contournent pas la
   limite (le sixième essai est refusé) ;
@@ -251,235 +310,376 @@ puis `429`), et la **confiance au proxy dans les deux sens** :
   adresse reste autorisée — sans quoi tous les clients d'un répartiteur
   partageraient un quota.
 
+Deux corrections ont renforcé ce contrôle dans cette phase : il est **déterministe**
+(le contrôle de quota utilise désormais une instance dédiée, au lieu de dépendre de
+la durée totale du script et de la fenêtre de 60 s du limiteur), et il est
+**auto-diagnostique** : chaque échec est publié en annotation
+(`::error title=CONTRÔLE-HORS-LIGNE::`), donc lisible sans télécharger les journaux
+du runner. Il couvre aussi les **deux états du volume de preuves**, disponible puis
+rendu non inscriptible.
+
 ### 5.5 Ce qui n'a pas pu être exécuté ici, et pourquoi
 
 | Élément | Raison locale | État vérifié |
 | --- | --- | --- |
-| PostgreSQL réel | absent de l'environnement, sans Docker | ✅ **exécuté en CI** (suites HTTP, réalité, sauvegarde) |
+| PostgreSQL réel | absent de l'environnement, sans Docker ni binaires serveur | ✅ **exécuté en CI** (suites HTTP, réalité, sauvegarde/restauration, exercice d'exploitation) |
 | `prisma validate` / `generate` / `migrate deploy` | hôte des binaires Prisma hors périmètre réseau | ✅ **exécuté en CI — succès** |
-| `pg_dump` / `pg_restore` | outils absents localement | ✅ **exécuté en CI — succès** |
-| `next build` sans accès aux polices Google | hôte des polices hors périmètre | ✅ **exécuté en CI — succès** |
-| Staging | **non provisionné** (§ 7.1) | ❌ **non exécuté** |
+| `pg_dump` / `pg_restore` / `psql` | absents localement | ✅ **exécutés en CI** — sauvegarde, restauration et exercice quotidien |
+| Sauvegarde et restauration **opérationnelles** | aucun environnement d'exploitation | ❌ **non exécutées** : la chaîne fonctionne sur une base de test, pas sur une infrastructure (§ 7.2) |
+| `next build` | polices Google hors périmètre réseau | ✅ **exécuté en CI — succès** |
+| Provisionnement d'un hébergeur, devis | aucune dépense autorisée | ❌ **non fait** — inventaire et procédure au § 10, coûts **non vérifiés** |
 
-Règle tenue : une vérification non exécutée est écrite comme non exécutée. Aucun
-résultat n'est extrapolé d'une exécution partielle.
+### 5.6 Audit des dépendances — informatif, non bloquant
+
+L'étape `npm audit` est volontairement en `continue-on-error` (une remédiation peut
+exiger une montée de version majeure). Résultat mesuré aujourd'hui :
+
+| Périmètre | Total | Gravités | Détail |
+| --- | --- | --- | --- |
+| API (`apps/api`) | 3 | 3 élevées, 0 critique | **toutes dans la CLI `prisma`** (dépendance de développement) via `@prisma/config` → `deepmerge-ts`. **`@prisma/client`, qui est la surface d'exécution, n'est pas visé.** |
+| Racine (site + outillage) | 12 | 9 élevées, 3 modérées, 0 critique | dont `next` (modéré, **direct**), `tailwindcss` et `prisma` (élevés, directs), et des dépendances transitives d'outillage de construction (`braces`, `chokidar`, `fast-glob`, `micromatch`, `postcss`) |
+
+Le correctif proposé par l'outil pour les avis Prisma est une **montée de version
+majeure** ; elle n'est pas appliquée : elle touche la chaîne de migrations, exige
+une validation des migrations et une vérification de restauration, et n'entre pas
+dans une préparation de pilote sans autorisation explicite. À noter : la version
+proposée par l'annuaire est **antérieure** à la version installée, ce qui rend la
+remédiation automatique inapplicable en l'état.
+
+Cette étape produit la **seule annotation de niveau `failure`** du job API, alors
+que toutes les étapes sont rapportées `success` et que la vérification est verte :
+c'est le comportement attendu d'une étape informative, pas un échec de test.
 
 ---
 
 ## 6. Sécurité et exploitation — état vérifié
 
-Détail complet dans `docs/SECURITY-MODEL.md`. Points adossés à un test :
-
-- **Authentification** : jeton signé `v1.<charge>.<émission>.<HMAC>`, durée 8 h ;
-  le jeton est confronté à la base à chaque requête (compte actif, `tokenVersion`,
-  rôle re-résolu) — un rôle retiré invalide immédiatement les jetons en
-  circulation. Connexion : message unique, aucune énumération de comptes.
-- **Cloisonnement** : filtrage par `companyId` dans la requête ; ressource d'une
-  autre entreprise ⇒ `404`, jamais `403`.
-- **Autorisations** : RBAC côté API ; un `DRIVER` n'agit que sur ses missions.
-- **Validation** : `whitelist` + `forbidNonWhitelisted` + `forbidUnknownValues` ;
-  propriété non déclarée rejetée (`400`).
-- **Secrets** : `.env.example` ne liste plus que des variables réellement lues.
-  `JWT_SECRET`, `JWT_REFRESH_SECRET`, `REDIS_URL` et `S3_*` en ont été retirées :
-  elles n'étaient lues par aucun code et laissaient croire qu'un stockage objet ou
-  une connexion Redis étaient configurés. L'API utilise `AUTH_SECRET`, `PORT`,
-  `CORS_ORIGIN`, `TRUST_PROXY_HOPS`, `PROOF_STORAGE_DIR`.
-- **Journalisation** : identifiant de corrélation sur chaque réponse, y compris
-  pour une requête rejetée par l'analyseur de corps ; aucune donnée sensible
-  (secret, jeton, contenu de preuve) dans les journaux ; erreurs `5xx` muettes
-  côté client, cause complète côté serveur.
-- **Limitation de débit** : 120/min général, 5/min connexion, 30/min caisse,
-  20/min dépôt de preuve — et la décision `TRUST_PROXY_HOPS` est vérifiée dans
-  les deux sens (§ 5.4).
-- **Idempotence** : `Idempotency-Key` obligatoire sur les mutations financières ;
-  clé rejouée à l'identique ⇒ résultat initial ; contenu différent ⇒ `409`.
-- **Audit** : table unique, chaque mutation testée laisse exactement une trace.
-
-**Absent et à ne pas annoncer comme disponible** : chiffrement au repos, rotation
-de `AUTH_SECRET` outillée, WAF, notifications (aucun canal configuré), paiement
-mobile money (**les encaissements sont des déclarations d'exploitation, pas des
-mouvements d'argent réels**), stockage objet avec URL signée, supervision et
-alerting.
+| Domaine | État | Preuve |
+| --- | --- | --- |
+| Authentification | jeton signé (`AUTH_SECRET` ≥ 32 caractères, valeurs d'exemple refusées en production), expiration, date future refusée, révocation par `tokenVersion` | 16 cas e2e + 6 contrôles hors ligne |
+| Cloisonnement inter-entreprises | `404` plutôt que `403` (aucune fuite d'existence), testé sur missions, preuves, caisse | 10 cas e2e |
+| Autorisations par rôle | matrice appliquée par gardes, refus `403` testés | 22 cas missions |
+| Validation des entrées | `whitelist` + `forbidNonWhitelisted` + `forbidUnknownValues` | 12 cas e2e + contrôles hors ligne |
+| En-têtes et CORS | origines explicites, aucun repli permissif, en-têtes de durcissement | 12 cas e2e |
+| Limitation de débit | 120 requêtes / 60 s global, 5 / 60 s sur la connexion ; `X-Forwarded-For` cru seulement si un proxy est déclaré | 2 cas e2e + 2 contrôles hors ligne |
+| Idempotence | `Idempotency-Key` sur les mutations, `clientId` sur les preuves | 15 cas caisse + 15 cas preuves |
+| Journal d'audit | écrit pour chaque mutation, avec identifiant de corrélation | vérifié en base par les tests |
+| Secrets | jamais journalisés (`describeConfig` ne publie que la **longueur** du secret) ; **jamais en argument de commande** : mot de passe PostgreSQL par `PGPASSWORD`, phrase de chiffrement par `-pass file:` | test unitaire dédié « aucun secret dans la ligne de commande » |
+| Preuves de livraison | écriture atomique `0600`, empreinte SHA-256, validation par signature binaire, chemin confiné au volume, `410` si le fichier manque | 19 tests unitaires + 15 cas e2e |
+| Sonde de disponibilité | vérifie **base et volume de preuves** ; `503` si l'un des deux défaille ; espace libre publié | 26 contrôles hors ligne + assertion e2e + test système |
+| Sonde d'alerting | `ops/healthcheck.mjs` : code de sortie **0** disponible / **1** dégradé / **2** injoignable | tests unitaires + test système (3 états éprouvés) |
+| Sauvegardes | `pg_dump` + archive du volume, chiffrement optionnel, manifeste à double empreinte, relecture après écriture, rétention qui ne supprime jamais la plus récente | test système + exercice CI quotidien |
+| Journaux exploitables | corrélation par `X-Request-Id`, erreurs 5xx muettes côté client et corrélées côté serveur | contrôles hors ligne et e2e |
+| Ce qui manque | chiffrement au repos (relève du disque du fournisseur), rotation de `AUTH_SECRET`, WAF, purge automatique, fournisseur de paiement, notifications | `docs/SECURITY-MODEL.md` § 11 |
 
 ---
 
-## 7. Staging, migrations, sauvegarde
+## 7. Staging, migrations, sauvegarde, restauration
 
 ### 7.1 Staging : non provisionné — blocage externe nommé
 
-Aucun environnement de staging n'existe, et cette absence n'est **pas** contournée
-par une simulation. Il manque, nominativement :
+Aucun environnement d'exploitation n'existe. L'inventaire des éléments requis, la
+spécification de configuration, la liste des secrets à générer (**sans jamais les
+afficher ni les versionner**) et la procédure de vérification des coûts auprès des
+fournisseurs sont dans `docs/DEPLOYMENT-ARCHITECTURE.md` § 2 et § 3.
 
-1. une instance **PostgreSQL dédiée** (jamais la base de production) ;
-2. un hébergement pour l'API capable de monter un **volume persistant** (sans quoi
-   les preuves ne survivent pas à un redéploiement) ;
-3. un **`AUTH_SECRET`** propre au staging (≥ 32 caractères) ;
-4. la liste des **origines CORS** du staging et le **nombre réel de proxies**
-   devant l'API ;
-5. un **accès à l'espace de sauvegarde**, avec `pg_dump`/`pg_restore`/`psql`
-   disponibles dans l'environnement d'exécution.
+Ce qui manque exactement, sans généralité :
 
-Le staging est **bloqué sur des ressources et autorisations externes**, pas sur du
-code. Tout ce qui n'en dépend pas a été fait et est vérifié.
+1. une décision d'hébergeur accompagnée de **coûts vérifiés** (§ 10) ;
+2. un nom de domaine et un certificat pour l'API et le site ;
+3. un secret d'authentification d'exploitation (généré sur place, jamais transmis
+   par ce dépôt) et une liste d'origines CORS réelles ;
+4. un volume persistant pour `PROOF_STORAGE_DIR` et un support **distinct** pour
+   `BACKUP_DIR` ;
+5. une base PostgreSQL managée ou un service équivalent, avec l'utilisateur dédié
+   de moindre privilège et ses sauvegardes propres.
 
-### 7.2 Restauration : réellement exécutée en CI
+**Aucune dépense n'a été engagée.** Aucun service payant n'a été provisionné.
 
-`tests/api-e2e/backup-restore.e2e.test.ts` — **2 cas réussis en CI**. La suite
-exécute réellement `pg_dump --format=custom`, puis `pg_restore` dans une base
-**isolée** au nom tiré au sort, et contrôle après restauration :
+### 7.2 Restauration : réellement exécutée, et chronométrée
 
-- les données (entreprise, mission, preuve, caisse, audit) ;
-- l'empreinte et la taille de la ligne de preuve ;
-- que les **contraintes sont toujours actives** : clés étrangères, unicité,
-  `CHECK` (`expectedAmount >= 0`, cohérence remise/encaissement) — une
-  restauration qui « réussit » sans ses contraintes produit une base
-  silencieusement fausse ;
-- que la base restaurée contient **exactement** les mêmes tables que la source
-  (aucune table perdue), avec `proof_files` présente ;
-- l'état des migrations lorsqu'il est suivi dans l'environnement.
+Deux niveaux, volontairement distingués :
 
-En fin d'exécution, la base de restauration est supprimée
-(`DROP DATABASE … WITH (FORCE)`), **inconditionnellement** — y compris si un
-contrôle échoue, sinon un échec laisserait la base derrière lui. Si les outils
-clients sont absents, la suite se **saute explicitement avec un avertissement** :
-elle ne fait jamais croire à une vérification qui n'a pas eu lieu.
+**(a) Sauvegarde et restauration de base par les outils PostgreSQL** —
+`backup-restore.e2e.test.ts` exécute `pg_dump` puis `pg_restore` dans une base
+isolée (`jotoliko_verif_<aléatoire>`, supprimée avec `DROP DATABASE … WITH (FORCE)`
+même en cas d'échec) et vérifie les données, les contraintes, les relations, la
+ligne de preuve, la caisse et le journal d'audit.
 
-**Limite assumée :** ces deux cas ont été exécutés sur la base éphémère de CI.
-Aucune restauration n'a été exécutée sur le futur environnement d'exploitation,
-qui n'existe pas. Un test de restauration périodique sur l'infrastructure réelle
-reste un prérequis (§ 11.2).
+**(b) Chaîne opérationnelle** — les scripts qui seront réellement planifiés sont
+exécutés de bout en bout, sur une base de test, par l'exercice
+`Jotoliko — exercice d'exploitation` ([job 116375687091](https://github.com/aydiarra-star/Jotoliko/actions/runs/38721134484/job/116375687091)) :
+sauvegarde de la base **et** du volume de preuves, deux exécutions successives
+(pointeur `latest` et rétention), restauration dans une base isolée, purge des
+preuves avec refus sans date limite.
 
-### 7.3 Ce que la sauvegarde doit couvrir
+Mesures publiées par cet exercice (annotations `RTO-MESURÉ` et `PORTÉE-DE-LA-MESURE`) :
 
-Les preuves vivent **hors** de la base. Sauvegarder PostgreSQL seul conserve les
-empreintes et les références mais **pas les fichiers** : après restauration, chaque
-téléchargement renverrait `410`. La sauvegarde doit donc couvrir la base **et** le
-volume `PROOF_STORAGE_DIR` (procédure détaillée dans
-`docs/DEPLOYMENT-ARCHITECTURE.md`, § 5). Aucune sauvegarde planifiée n'existe.
+| Mesure | Valeur observée |
+| --- | --- |
+| Sauvegarde complète (base + volume, ~0,1 Mio) | ~110 ms, relue et vérifiée par empreinte |
+| Restauration « base + volume » | **2 972 ms** (base 2 968 ms, extraction du volume 4 ms) |
+| Restauration « base seule » | 259 ms |
+| Preuves à empreinte conforme après restauration | 1 / 1 |
+| Preuves référencées sans fichier si le volume n'est pas restauré | 1 (téléchargement impossible : `410`) |
+| Problèmes détectés | 0 |
 
-### 7.4 Migrations
+**Ce que la sauvegarde couvre, et pourquoi les deux éléments sont obligatoires.**
+Les preuves vivent hors de la base : la base ne contient que l'empreinte et la clé
+de stockage. Une sauvegarde de la base seule « réussit » et laisse les pièces
+justificatives sans protection — c'est le chiffre ci-dessus (1 preuve sans fichier,
+`410`), mesuré et non supposé.
 
-Discipline **additive** : aucune migration destructive n'a été exécutée, aucune ne
-doit l'être sans autorisation explicite et sauvegarde vérifiée. La dernière
-migration (`proof_delivery_storage`) ne fait que créer une table. La rejouabilité
-est vérifiée en CI (schéma recréé de zéro puis migrations appliquées dans
-l'ordre), ainsi que l'absence de dérive schéma ⇄ migrations.
+### 7.3 Migrations
 
----
+- Toutes les migrations sont **additives** ; les `DEFAULT uuid()` en base ont été
+  supprimés (source de la dérive d'origine).
+- `prisma migrate deploy` est exécuté en CI sur base vierge, et une **détection de
+  dérive** échoue si le schéma déclare une table ou une colonne qu'aucune migration
+  ne crée.
+- Le schéma est aussi **rejoué de zéro** par les suites de test et par l'exercice
+  d'exploitation : une migration non rejouable est détectée immédiatement.
+- **Aucune migration destructive n'a été exécutée**, et aucune ne doit l'être sur
+  des données existantes sans autorisation explicite **et** sauvegarde vérifiée.
 
-## 8. Écarts restants
+### 7.4 Retour arrière
 
-| Écart | Impact pilote | État |
+Redéployer la version précédente de l'API reste possible tant que les migrations
+sont additives. Une migration destructive rendrait le retour arrière impossible
+sans restauration complète : elle exige donc une autorisation explicite et une
+sauvegarde vérifiée prise juste avant. Procédure détaillée :
+`docs/DEPLOYMENT-ARCHITECTURE.md` § 6.
+
+### 7.5 RPO / RTO : hypothèses explicites et portée des mesures
+
+| Objectif | Valeur | Hypothèses |
 | --- | --- | --- |
-| **Staging non provisionné** | bloque le pilote opérationnel | bloqué sur ressources externes (§ 7.1) |
-| **Aucune sauvegarde planifiée** de production | perdable en cas d'incident | à configurer (§ 11.2) |
-| **Rétention des preuves non arrêtée** | purge impossible ; conservation indéfinie | décision client requise |
-| **Aucune supervision / alerte** | incident non détecté | sondes prêtes (`/health/live`, `/health/ready`) |
-| **Aucun fournisseur de paiement** | encaissements = déclarations | non implémenté, non simulé |
-| **Aucune notification** (SMS, WhatsApp, e-mail) | pas d'information automatique du client | non implémenté |
-| **`Order` et `Mission` coexistent** | deux modèles pour un même concept | dette technique identifiée, non résolue |
-| **Doublon de statut/documentation historique** | confusion possible | documentation recadrée |
-| **Aucun linter configuré** | pas de contrôle de style statique | `typecheck` strict des deux projets fait office ; à décider |
-| **Site non installable (PWA)** | usage terrain dépendant du navigateur | aucun `manifest`, aucun service worker |
-| **Audit non exposé en lecture** | consultation en base uniquement | non implémenté |
-| **Chiffrement au repos** | non vérifié | relève du volume/hébergeur |
+| **RPO** | ≤ 24 h | sauvegarde **quotidienne**. Aucune journalisation continue (*WAL archiving*) : le RPO ne peut pas être inférieur à l'intervalle de sauvegarde |
+| **RTO technique** (base + volume) | ~3 s sur base de test | création de la base + `pg_restore` + extraction du volume, mesuré en CI |
+| **RTO réel d'incident** | **non mesuré** | inclut détection, décision humaine, bascule et reprise de service |
 
-**Mobile.** Aucune application native n'existe dans le dépôt (aucun
-`mobile/`, `ios/`, `android/`, aucune configuration Expo). Conformément à la règle
-posée, **aucune réécriture mobile disproportionnée n'a été engagée** : l'interface
-web existante couvre fonctionnellement le pilote. À noter toutefois : le site
-n'est **pas** installable hors ligne (pas de `manifest`, pas de service worker),
-alors qu'une file d'attente hors ligne existe côté logique
-(`lib/jotoliko-os/offline-queue.ts`). La décision « PWA installable ou application
-native » appartient au client et conditionne l'usage terrain réel.
+**Portée, énoncée pour éviter tout malentendu :** ces durées portent sur une base
+de test de quelques mégaoctets, sur le disque local d'un exécuteur de CI, sans
+concurrence et sans les données réelles. Le RTO d'une infrastructure réelle sera
+**supérieur** ; l'extrapolation linéaire n'est pas légitime. La première journée du
+pilote doit comprendre un **exercice de restauration sur l'environnement réel**,
+dont les durées remplacent celles-ci. Aucune valeur contractuelle n'est annoncée.
 
 ---
 
-## 9. Risques résiduels
+## 8. Gouvernance des preuves de livraison
 
-1. **Le code des preuves n'a jamais tourné ailleurs qu'en CI.** Il est vérifié
-   (107 cas, fichiers contrôlés sur disque par empreinte), mais jamais avec des
-   photos réelles prises sur un téléphone en réseau faible — tailles, formats,
-   latences réelles.
-2. **Le GPS n'a jamais été vérifié avec un vrai signal.** La logique de fraîcheur
-   est testée ; la qualité de la localisation en zone dense ne l'est pas.
-3. **Un seul serveur, un seul volume.** Le stockage des preuves sur répertoire
-   serveur exclut, en l'état, une architecture multi-instances sans volume
-   partagé.
-4. **Aucune mesure de performance.** Aucun test de charge : le débit réel sous
-   plusieurs dizaines de livreurs simultanés est inconnu.
-5. **La concurrence de la caisse est vérifiée par tests, pas par un usage réel.**
-6. **Risque d'exploitation** : sans sauvegarde planifiée ni supervision, la
-   détection et la récupération reposent entièrement sur l'humain.
-7. **La dérive `Order`/`Mission` reste ouverte** : toute évolution devra choisir
-   explicitement le modèle de référence.
-8. **Un défaut de ce type peut se reproduire** : le défaut de la clé de stockage
-   (§ 4.1) était invisible en test unitaire et en compilation. La parade — un test
-   qui compose la valeur réelle avant de la valider — a été ajoutée pour ce
-   module, mais n'est pas systématique.
+### 8.1 Ce qui est outillé
 
----
+- conservation par défaut : **rien n'est purgé automatiquement** ; la suppression
+  est logique (`deletedAt`), auditée, et la ligne reste lisible ;
+- purge physique par `ops/prune-proofs.mjs`, qui exige **une date limite explicite**
+  (`--before=AAAA-MM-JJ`) **et** une confirmation (`--confirm`) : sans date limite,
+  il refuse ; sans confirmation, il se contente de décrire ce qu'il supprimerait ;
+- seules les preuves **déjà supprimées logiquement** et antérieures à la date
+  limite sont effacées : une preuve active reste, quelle que soit son ancienneté ;
+- les lignes de `proof_files` ne sont **jamais** touchées : le journal d'audit et
+  les références survivent à la disparition du fichier ; une preuve purgée répond
+  `410 Gone` — comportement attendu, pas panne ;
+- sauvegarde des preuves intégrée à la chaîne de sauvegarde (§ 7.2), avec
+  vérification d'empreinte après restauration.
 
-## 10. Ce que ce rapport ne prétend pas
+### 8.2 Décisions qui exigent une validation humaine
 
-- Que Jotoliko est prêt pour la production : **non**.
-- Que la CI verte démontre un fonctionnement opérationnel : la CI démontre ce
-  qu'elle teste. Elle ne dit rien de la charge, du réseau réel, de la formation
-  des utilisateurs ni de l'exploitation.
-- Qu'un environnement de staging ou de production existe : **aucun n'existe**.
-- Qu'un paiement mobile money fonctionne : **aucun fournisseur n'est configuré ni
-  testé**.
-- Que les preuves sont sauvegardées : la procédure est écrite, exécutée en CI sur
-  une base éphémère, **et aucune sauvegarde planifiée n'existe**.
-- Qu'un déploiement a eu lieu : **aucun**.
+**Aucune durée de conservation n'est imposée par le code.** Elles dépendent du pays,
+de la nature de la pièce et de la relation contractuelle. Les fixer à la place du
+client reviendrait à prendre une décision qu'il n'a pas prise, sur un sujet où une
+erreur ne se rattrape pas : une preuve détruite ne se reconstitue pas.
+
+| Décision | Pourquoi elle appartient au client |
+| --- | --- |
+| Durée de conservation **par nature** de preuve | un justificatif d'encaissement et une photo de livraison n'ont pas le même usage contentieux |
+| Point de départ du décompte | date de livraison, de clôture ou de dernier paiement : détermine ce qui devient éligible |
+| Contre-indications (litige, contrôle, demande d'un tiers) | exigent un gel de la purge, donc une procédure humaine |
+| Qui ordonne la purge et comment l'exécution est consignée | la purge est irréversible et doit être imputable à une personne |
+| Accès en lecture aux preuves hors application | la consultation passe aujourd'hui par l'API, donc par le cloisonnement et les permissions ; un accès direct au volume contournerait ces contrôles |
+
+Politique détaillée et mécanique de purge : `docs/SECURITY-MODEL.md` § « Preuves de
+livraison » et `docs/OPERATIONS-RUNBOOK.md` § 6.
 
 ---
 
-## 11. Prérequis
+## 9. Parcours pilote
 
-### 11.1 Conditions du pilote **technique**
+### 9.1 Ce qui est couvert par les tests automatisés
 
-1. Périmètre restreint et assumé : une entreprise, une équipe, un volume de
-   missions limité.
-2. **Pas d'espèces réelles** engagées sur la base des chiffres enregistrés : les
-   encaissements sont des déclarations d'exploitation, aucun fournisseur de
-   paiement n'est branché.
-3. **Preuves conservées** sur un volume persistant (`PROOF_STORAGE_DIR`), avec une
-   sauvegarde manuelle des deux éléments (base **et** volume) avant chaque étape
-   importante.
-4. Une personne désignée pour lire les journaux par identifiant de corrélation en
-   cas d'incident, et un canal de retour des incidents.
-5. Décision explicite sur la durée de conservation des preuves avant toute
-   suppression.
-6. Rappel aux utilisateurs : l'application web n'est pas installable hors ligne
-   en l'état ; l'usage terrain doit être validé sur les appareils visés.
+| Étape du parcours | Couverture automatisée |
+| --- | --- |
+| Création de mission | `missions.e2e.test.ts` (création, référence, validation) |
+| Attribution | affectation, refus d'affectation hors périmètre |
+| Livraison et transitions | transitions autorisées **et refusées**, preuve exigée avant clôture |
+| Dépôt de preuve | fichier réellement écrit, empreinte recalculée, `415`/`413`/`400`, `410` |
+| Doublons | rejeu avec `clientId` ⇒ aucune seconde preuve ; `Idempotency-Key` ⇒ aucune seconde mission |
+| Encaissement **déclaré** | `POST /missions/:id/payment`, plafond, idempotence, concurrence |
+| Versement | `POST /missions/:id/remittance`, mouvements de caisse symétriques |
+| Rapprochement | écart attendu − déclaré − remis calculé et exposé |
+| Incidents | `410` sur preuve manquante, `503` sur base absente, `503` sur volume de preuves inutilisable |
+| Autorisations | matrice de rôles, cloisonnement inter-entreprises |
+| Interruption réseau / reprise | logique de file hors ligne testée **au niveau du domaine** (états, temporisation, `clientId`) — **pas au niveau du navigateur** (§ 9.3) |
 
-### 11.2 Conditions du pilote **opérationnel contrôlé**
+### 9.2 Paiements : déclaré n'est pas confirmé
 
-En plus de 11.1 :
+**Aucun fournisseur de paiement n'est configuré ni testé.** Le modèle `Payment`
+existe dans le schéma, mais `prisma.payment` **n'est appelé par aucune route de
+l'API** : les encaissements passent par `POST /missions/:id/payment` et
+`POST /missions/:id/remittance`, qui enregistrent des **déclarations
+d'exploitation** et des mouvements de caisse.
 
-1. **Staging provisionné et validé** (§ 7.1) — les cinq éléments nommés.
-2. **Sauvegarde planifiée** de la base **et** du volume de preuves, avec
-   vérification d'intégrité, conservée hors du serveur de production.
-3. **Restauration testée sur l'infrastructure réelle**, chronométrée
-   (RTO/RPO mesurés, aujourd'hui non mesurés).
-4. **Retour arrière documenté et éprouvé** : migrations additives uniquement,
-   procédure de retour arrière connue de l'exploitant.
-5. **Supervision branchée** : `GET /health/ready` doit retirer l'instance du
-   routage ; alerte sur `5xx` et sur indisponibilité de la base.
-6. **Politique de rétention des preuves arrêtée avec le client**, et procédure de
-   purge écrite.
-7. **Formation des utilisateurs** et procédure de support.
-8. Décision explicite du client sur l'usage hors ligne (PWA installable ou
-   application native).
+Conséquence directe pour le pilote : tout montant constaté est un **montant déclaré
+par le livreur**, jamais un paiement confirmé par un opérateur mobile money ou une
+banque. Le rapprochement doit donc être **manuel** et documenté (déclaré / remis /
+écart), et aucune communication ne doit présenter un encaissement comme confirmé
+par un fournisseur.
 
-### 11.3 Interdits maintenus
+### 9.3 Décision sur l'expérience hors ligne — **proposée, à valider par le client**
 
-- **Aucun déploiement de production sans autorisation explicite.**
+**État réel.** La file d'attente hors ligne (`lib/jotoliko-os/offline-queue.ts`)
+est de la **logique seule** : états `EN_ATTENTE` → `SYNCHRONISATION` →
+`SYNCHRONISE` / `ECHEC`, clé d'idempotence `clientId`, temporisation croissante de
+2 s à 5 min. Il n'existe **ni service worker, ni manifeste, ni stockage navigateur
+durable** : l'application n'est pas installable et l'interface ne se charge pas sans
+réseau. **Cette file n'est pas une PWA** et ne doit pas être présentée comme telle.
+
+**Décision proposée : ne pas construire de PWA avant le pilote.** Trois raisons :
+
+1. l'objet du pilote est de valider le parcours métier (mission, livraison, preuve,
+   encaissement déclaré, rapprochement, incident), pas la couverture réseau ;
+2. une PWA utile n'est pas un réglage mais un chantier : service worker, stratégie
+   de cache de l'interface, stockage local durable, file de reprise persistante,
+   indicateur d'état hors ligne, et surtout **résolution des conflits** quand un
+   même document a été modifié des deux côtés. Livrée à moitié, elle serait pire
+   que son absence : le livreur croirait pouvoir travailler sans réseau ;
+3. l'idempotence serveur existe déjà (`clientId`, `Idempotency-Key`) : la couche
+   manquante est côté navigateur et peut être ajoutée **sans changer le contrat
+   d'API**.
+
+**Contrainte à accepter explicitement si la décision est maintenue :** sans réseau,
+le dépôt d'une preuve et la clôture d'une livraison sont **impossibles**. Le pilote
+doit donc se dérouler en zone couverte, ou accepter une saisie différée hors
+application (papier, appel). C'est une décision d'exploitation, pas une
+caractéristique du logiciel.
+
+### 9.4 Checklist de recette terrain
+
+Vingt scénarios, à exécuter sur un environnement dédié et **jamais sur des données
+réelles**, avec relevé de l'heure, de l'acteur et du résultat observé :
+`docs/OPERATIONS-RUNBOOK.md` § 9.3. Les scénarios sur les doublons, la coupure
+réseau, la reprise et la preuve supprimée sont ceux qui se dégradent le plus vite
+en conditions réelles : ils doivent être exécutés **sur le terrain**, avec le
+matériel des livreurs, et pas depuis un poste confortablement connecté.
+
+---
+
+## 10. Coûts et fournisseurs
+
+**Aucun coût n'est vérifié dans ce rapport, et aucune dépense n'a été engagée.**
+L'environnement de rédaction n'a pas accès aux pages tarifaires des hébergeurs : il
+n'a donc pas été possible de relever des prix datés. Inventer ou approximer ces
+montants serait pire qu'une case vide — une décision de dépense se prend sur des
+chiffres vérifiés à la date de la décision.
+
+Ce qui peut être dit sans risque :
+
+- **Aucun service payant n'a été provisionné**, aucune carte, aucun compte, aucune
+  dépense.
+- Le dimensionnement minimal à chiffrer est connu et petit : une instance d'API
+  (1 vCPU, 512 Mio–1 Go), une base PostgreSQL managée (1 vCPU, 1 Go, 10–20 Go), un
+  volume persistant pour les preuves, un support de sauvegarde distinct, un nom de
+  domaine.
+- Les postes à faire chiffrer par un devis réel : hébergement de l'API, base
+  managée, volume et **sauvegardes du volume** (poste souvent facturé à part),
+  domaine et certificat, sauvegardes PostgreSQL (rétention), éventuelle supervision
+  externe, et bande passante sortante au-delà du forfait.
+- Points d'attention contractuels à vérifier auprès du fournisseur : **localisation
+  des données** (pays d'hébergement et de réplication), **durée de rétention des
+  sauvegardes** incluses, procédure de restauration à la demande et son coût,
+  garanties de disponibilité, et conditions de réversibilité (export des données en
+  fin de contrat).
+
+Procédure : relever les prix datés de deux fournisseurs au minimum, les consigner
+au § « Environnements » de `docs/DEPLOYMENT-ARCHITECTURE.md`, puis demander
+l'autorisation de dépense. **Tant que cette autorisation n'est pas donnée, aucun
+provisionnement n'a lieu.**
+
+---
+
+## 11. Écarts restants
+
+| # | Écart | Impact | État |
+| --- | --- | --- | --- |
+| 1 | Staging non provisionné | bloque le pilote opérationnel | décision et dépense à autoriser (§ 10) |
+| 2 | Sauvegarde planifiée de production inexistante | RPO réel non garanti ; la chaîne est éprouvée en CI, **pas** en exploitation | outillage prêt (`ops/`), planification à installer |
+| 3 | Alerte sans destinataire | une panne ne préviendrait personne | `BACKUP_ALERT_COMMAND` et sonde prêts ; destinataire à désigner |
+| 4 | RTO réel non mesuré | aucune garantie de délai de reprise | exercice à faire sur l'environnement réel |
+| 5 | Rétention des preuves non arrêtée par le client | purge impossible à planifier | `ops/prune-proofs.mjs` prêt, sans durée par défaut |
+| 6 | Décision hors ligne à valider | conditionne le déroulement du pilote | décision proposée et argumentée (§ 9.3) |
+| 7 | Encaissements déclaratifs seulement | aucun rapprochement automatique avec un opérateur | rapprochement manuel documenté (§ 9.2) |
+| 8 | Douze avis de dépendances (dont 3 côté API, dans la CLI Prisma) | aucun avis dans la surface d'exécution de l'API ; remédiation = montée majeure | à décider, hors préparation de pilote (§ 5.6) |
+| 9 | Multi-instances | le stockage des preuves est un volume local : pas de montée en charge horizontale sans volume partagé ou stockage objet | hors périmètre pilote, documenté |
+| 10 | Fonctions absentes | notifications (SMS/WhatsApp), fournisseur de paiement, WAF, rotation de secret, chiffrement au repos, purge automatique, interface d'administration | documentées comme absentes, non annoncées comme disponibles |
+| 11 | Aucun script `lint` | pas de contrôle de style automatique | écart de qualité, pas de sécurité ; non contourné par un faux script |
+
+---
+
+## 12. Ce que ce rapport ne prétend pas
+
+- **Ne pas confondre CI verte et service opérationnel.** Les cinq vérifications
+  vertes prouvent que le code fonctionne sur une base de test, pas qu'un service
+  rendu à un client fonctionne.
+- **Ne pas confondre restauration de test et sauvegarde opérationnelle.** La chaîne
+  est exécutée et mesurée en CI ; **aucune** sauvegarde de production n'existe.
+- **Ne pas confondre RTO mesuré et RTO contractuel.** Les durées citées portent sur
+  une base de test (§ 7.5).
+- **Ne pas confondre déclaré et confirmé.** Aucun paiement n'est confirmé par un
+  fournisseur (§ 9.2).
+- **Ne pas confondre file d'attente et PWA.** Aucun service worker, aucun
+  manifeste : rien n'est installable, rien ne fonctionne hors réseau (§ 9.3).
+- **Ne pas confondre preuve enregistrée et preuve conservée.** Une preuve supprimée
+  logiquement reste auditable, mais son fichier n'est plus servi (`410`) ; la
+  conservation durable dépend de la sauvegarde du volume (§ 8).
+- Le maintien de la PR #3 et l'absence de fusion ou de déploiement ne sont pas des
+  prudences décoratives : ce sont des contraintes explicites de la mission.
+
+---
+
+## 13. Prérequis
+
+### 13.1 Conditions du pilote **technique** (soutenables aujourd'hui)
+
+1. Périmètre restreint et équipe technique identifiée.
+2. Aucune donnée de production : l'environnement reste isolé.
+3. Sauvegarde manuelle **base + volume** avant toute manipulation de données, via
+   `ops/backup.mjs`, et restauration vérifiée par `ops/restore-verify.mjs`.
+4. Aucune migration destructive.
+5. Les défauts constatés sont consignés, pas contournés.
+6. `AUTH_SECRET` propre à l'environnement, jamais versionné.
+
+### 13.2 Conditions du pilote **opérationnel contrôlé**
+
+1. Staging provisionné, configuré et validé (§ 7.1), avec **coûts vérifiés** (§ 10)
+   et autorisation de dépense.
+2. Sauvegarde **planifiée** sur cet environnement, alertes aboutissant à un
+   responsable désigné, et **exercice de restauration chronométré** sur place.
+3. Politique de rétention des preuves arrêtée par le client (§ 8.2).
+4. Décision explicite sur l'usage hors ligne (§ 9.3) et information des livreurs.
+5. Checklist terrain exécutée (§ 9.4), en particulier les scénarios de doublons, de
+   coupure réseau et de reprise.
+6. Procédure d'incident connue des intervenants et responsables désignés
+   (`docs/OPERATIONS-RUNBOOK.md` § 7 et § 8).
+
+### 13.3 Interdits maintenus
+
+- **Aucun déploiement de production** sans autorisation explicite.
 - **Aucune migration destructive** sur des données existantes sans autorisation
   explicite **et** sauvegarde vérifiée.
-- Aucun test désactivé pour obtenir une CI verte.
-- Aucun merge automatique : PR #4 attend une décision humaine.
+- **Aucun test désactivé** pour obtenir une CI verte ; aucun échec masqué.
+- **Aucun provisionnement payant** ni dépense engagée sans autorisation.
+- **Aucune fusion** de PR sans autorisation explicite ; PR #3 préservée.
 
 ---
 
@@ -487,28 +687,39 @@ En plus de 11.1 :
 
 ```bash
 # 1. Socle local (sans base de données)
-npm ci
-node apps/api/scripts/local-prisma-stub.mjs   # substitut local, jamais utilisé en CI
-npm run typecheck          # 0 erreur
-npm test                   # 128 réussis, 1 ignoré (129) — 6 fichiers
-npm run api:typecheck      # 0 erreur
-npm run api:build          # dist/apps/api/src/main.js
-npm run api:smoke          # 24/24 contrôles HTTP, sans base
+npm ci && npm --prefix apps/api ci
+npm run typecheck            # 0 erreur
+npm run api:typecheck        # 0 erreur
+npm run ops:typecheck        # 0 erreur (checkJs sur ops/)
+npm test                     # 170 réussis, 1 ignoré
+npm run api:build            # doit produire apps/api/dist/apps/api/src/main.js
+npm run api:smoke            # 26/26 — API réelle, sans base exploitable
 
-# 2. Bout en bout (exige PostgreSQL 16 réel)
-export DATABASE_URL="postgresql://user:pass@localhost:5432/jotoliko_e2e"
-npm run api:build && npm run test:e2e:api   # 107 cas
+# 2. Bout en bout (exige PostgreSQL 16 réel et le client Prisma généré)
+npm run api:build && npm run test:e2e:api     # 115 cas, dont 8 pour les scripts d'exploitation
 
-# 3. Sauvegarde / restauration (exige pg_dump, pg_restore, psql)
-npx vitest run --config vitest.e2e.config.ts tests/api-e2e/backup-restore.e2e.test.ts
+# 3. Chaîne d'exploitation (exige pg_dump, pg_restore, psql)
+node ops/backup.mjs --dry-run                              # simulation, aucune écriture
+BACKUP_DIR=… PROOF_STORAGE_DIR=… node ops/backup.mjs       # sauvegarde base + volume
+BACKUP_DIR=… node ops/restore-verify.mjs                   # restauration vérifiée et mesurée
+node ops/prune-proofs.mjs --before=AAAA-MM-JJ               # simulation de purge
+node ops/healthcheck.mjs --url=https://api.exemple.org     # 0/1/2 selon l'état
 
 # 4. CI
-gh pr checks 4
-gh api "/repos/aydiarra-star/Jotoliko/check-runs/<id>/annotations"   # dont E2E-BILAN
+gh pr checks 4               # 5 vérifications
+gh run list --branch arena/dd76021f-jotoliko
+# Bilan des cas exécutés : annotation « E2E-BILAN » du job e2e
+# Mesures de restauration : annotations « RTO-MESURÉ » et « PORTÉE-DE-LA-MESURE »
 ```
 
-Vérifications CI de référence (2026-10-15) :
-[API](https://github.com/aydiarra-star/Jotoliko/actions/runs/38714436073/job/116353553340) ·
-[e2e](https://github.com/aydiarra-star/Jotoliko/actions/runs/38714436073/job/116353553109) ·
-[Reality](https://github.com/aydiarra-star/Jotoliko/actions/runs/38714436182/job/116353553427) ·
-[Site](https://github.com/aydiarra-star/Jotoliko/actions/runs/38714436182/job/116353553922)
+**Lecture des annotations.** Les journaux des exécuteurs ne sont pas toujours
+téléchargeables depuis l'extérieur ; les résultats, bilans et mesures sont donc
+publiés en annotations, lisibles par l'API GitHub :
+
+```bash
+gh api "repos/aydiarra-star/Jotoliko/check-runs/<job_id>/annotations"
+```
+
+*Rapport établi sur les preuves exécutées au commit `382fd23` de la branche
+`arena/dd76021f-jotoliko`. Toute évolution ultérieure du code invalide les mesures
+citées ici : elles devront être reproduites.*
