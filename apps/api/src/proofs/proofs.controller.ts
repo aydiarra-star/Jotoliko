@@ -15,6 +15,7 @@ import {
 import { Throttle } from "@nestjs/throttler";
 import type { Response } from "express";
 import { AuthGuard } from "../auth/auth.guard";
+import { BillingAccessGuard } from "../billing/billing-access.guard";
 import { RequirePermission, RolesGuard } from "../auth/roles.guard";
 import type { AuthenticatedRequest } from "../auth/auth.types";
 import { ProofsService } from "./proofs.service";
@@ -27,7 +28,7 @@ import { UploadProofDto } from "./dto/upload-proof.dto";
  * un dépôt ne peut pas « réussir » sans que le fichier soit réellement stocké.
  */
 @Controller("missions/:missionId/proofs")
-@UseGuards(AuthGuard, RolesGuard)
+@UseGuards(AuthGuard, BillingAccessGuard, RolesGuard)
 export class ProofsController {
   constructor(private readonly proofs: ProofsService) {}
 
