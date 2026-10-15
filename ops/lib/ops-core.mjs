@@ -10,10 +10,39 @@
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 
 /** Format de manifeste. Toute évolution incompatible doit changer ce numéro. */
 export const MANIFEST_VERSION = 1;
+
+// ---------------------------------------------------------------------------
+// Types partagés — déclarés en JSDoc parce que les tests TypeScript consomment
+// ce module : un contrat de données non écrit se casse en silence.
+// ---------------------------------------------------------------------------
+
+/**
+ * Artefact d'une sauvegarde.
+ *
+ * @typedef {object} Artifact
+ * @property {string} name Nom du fichier sur le support.
+ * @property {number} bytes Taille **stockée** (chiffrée le cas échéant).
+ * @property {number} [contentBytes] Taille en clair.
+ * @property {string} sha256 Empreinte des octets stockés.
+ * @property {string} contentSha256 Empreinte des octets en clair (valide une restauration).
+ */
+
+/**
+ * Sauvegarde présente sur le support.
+ *
+ * `tag` est l'étiquette déclarée dans le manifeste, `directory` le répertoire
+ * réel : c'est le second que la rétention supprime.
+ *
+ * @typedef {object} BackupEntry
+ * @property {string} tag
+ * @property {string} [directory]
+ * @property {string} createdAt
+ * @property {any} [manifest]
+ */
 
 // ---------------------------------------------------------------------------
 // Annotations CI
@@ -23,7 +52,7 @@ export const MANIFEST_VERSION = 1;
  * Publie une information lisible par l'API GitHub quand le script tourne dans
  * une action. Sur un runner, les journaux ne sont pas toujours accessibles depuis
  * l'extérieur : une annotation, si. Hors CI, le message reste un simple log.
-  * @param {"error"|"warning"|"notice"} level
+ * @param {"error"|"warning"|"notice"} level
  * @param {string} title
  * @param {string} message
  */
@@ -32,11 +61,16 @@ export function annotate(level, title, message) {
     .replace(/\r/g, "")
     .replace(/\n+/g, " | ")
     .slice(0, 900);
+  // Tout part sur la sortie d'erreur (`stderr`) : la sortie standard reste
+  // réservée au rapport lisible par une machine, sans quoi
+  // `node ops/backup.mjs | jq` serait impossible et tout consommateur devrait
+  // deviner où commence le JSON. GitHub interprète les commandes de workflow sur
+  // les deux flux, les annotations ne sont donc pas perdues.
   if (process.env.GITHUB_ACTIONS === "true") {
     const command = level === "error" ? "error" : level === "warning" ? "warning" : "notice";
-    console.log(`::${command} title=${title}::${flat}`);
+    console.error(`::${command} title=${title}::${flat}`);
   } else {
-    console.log(`[${level}] ${title} : ${flat}`);
+    console.error(`[${level}] ${title} : ${flat}`);
   }
 }
 
@@ -56,7 +90,7 @@ export async function sha256File(path) {
     const stream = createReadStream(path);
     stream.on("data", (chunk) => hash.update(chunk));
     stream.on("error", reject);
-    stream.on("end", resolve);
+    stream.on("end", () => resolve(undefined));
   });
   return hash.digest("hex");
 }
@@ -158,6 +192,7 @@ export function postgresConnection(databaseUrl, { database } = {}) {
   if (url.username) args.push("--username", decodeURIComponent(url.username));
   args.push("--dbname", name);
 
+  /** @type {Record<string, string>} */
   const env = {};
   if (url.password) env.PGPASSWORD = decodeURIComponent(url.password);
   // Un `sslmode` exigé dans l'URL doit être conservé : l'ignorer tenterait une
@@ -223,14 +258,22 @@ export function backupPaths(backupRoot, tag, { encrypted = false } = {}) {
  * que personne ne saurait distinguer d'une corruption silencieuse.
  *
  * @param {{ tag: string, createdAt: string, encrypted?: boolean, database?: Artifact|null, proofs?: Artifact|null, counts?: Record<string, number> }} options
+ * @returns {{ manifestVersion: number, tag: string, createdAt: string, encrypted: boolean, artifacts: Artifact[], counts: Record<string, number> }}
  */
 export function buildManifest({ tag, createdAt, encrypted, database, proofs, counts }) {
+  // Construction explicite plutôt qu'un `filter(Boolean)` : la liste est celui
+  // des artefacts **présents**, et son type doit dire la même chose.
+  /** @type {Artifact[]} */
+  const artifacts = [];
+  if (database) artifacts.push(database);
+  if (proofs) artifacts.push(proofs);
+
   return {
     manifestVersion: MANIFEST_VERSION,
     tag,
     createdAt,
     encrypted: Boolean(encrypted),
-    artifacts: [database, proofs].filter(Boolean),
+    artifacts,
     // Nombre de lignes par table, pour comparer après restauration.
     counts: counts ?? {},
   };

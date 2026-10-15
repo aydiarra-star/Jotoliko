@@ -12,6 +12,7 @@
     "test:e2e:api": "vitest run --config vitest.e2e.config.ts",
     "typecheck": "tsc --noEmit",
     "api:typecheck": "npm --prefix apps/api run typecheck",
+    "ops:typecheck": "tsc -p ops/tsconfig.json",
     "api:build": "npm --prefix apps/api run build",
     "api:smoke": "node scripts/api-offline-smoke.mjs",
     "api:prisma:generate": "npm --prefix apps/api run prisma:generate",

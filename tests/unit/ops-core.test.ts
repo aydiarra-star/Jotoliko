@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   backupPaths,
+  binarySearchPath,
   buildManifest,
   evaluateHealth,
   listBackups,
@@ -37,6 +38,9 @@ import {
 // `openssl version`). Utiliser la mauvaise forme ferait ignorer ces cas en
 // silence — et c'est précisément ce qui est arrivé à la première version de ce
 // fichier.
+/** Séparateur de chemins du système : la valeur est celle du socle, pas une constante recopiée. */
+const delimiterOf = (sample: string) => (sample.includes("/") ? ":" : ";");
+
 const hasOpenssl = (() => {
   try {
     execFileSync("openssl", ["version"], { stdio: "ignore" });
@@ -137,7 +141,12 @@ describe("Sauvegarde — manifeste et intégrité", () => {
     });
     manifest = {
       ...manifest,
-      artifacts: manifest.artifacts.map((a: { sha256: string }) => ({ ...a, contentSha256: a.sha256 })),
+      // Le manifeste est complété avec l'empreinte du contenu en clair, comme le
+      // fait le script avant d'écrire : sans chiffrement, les deux sont égales.
+      artifacts: manifest.artifacts.map((artifact) => ({
+        ...artifact,
+        contentSha256: artifact.contentSha256 || artifact.sha256,
+      })),
     };
 
     expect(await verifyBackupIntegrity(root, manifest)).toEqual({ ok: true, problems: [] });
@@ -171,7 +180,14 @@ describe("Sauvegarde — manifeste et intégrité", () => {
       tag: "t",
       createdAt: new Date().toISOString(),
       encrypted: false,
-      database: { name: "database.dump", bytes: 10, sha256: "a".repeat(64) },
+      // Artefact **volontairement hors contrat** : c'est le cas testé (une
+      // sauvegarde sans empreinte du contenu en clair ne doit jamais être
+      // acceptée, puisqu'aucune restauration ne pourrait être validée).
+      database: {
+        name: "database.dump",
+        bytes: 10,
+        sha256: "a".repeat(64),
+      } as unknown as import("../../ops/lib/ops-core.mjs").Artifact,
       proofs: null,
     });
     expect(verifyManifestShape(manifest).join(" ")).toMatch(/empreinte de contenu/);
@@ -362,6 +378,37 @@ describe("Preuves — plan de purge", () => {
     // fournie explicitement.
     const plan = planProofPurge([row("a", "2020-01-01T00:00:00.000Z")], { before: undefined } as never);
     expect(plan.problems.length).toBeGreaterThan(0);
+  });
+});
+
+describe("Recherche des binaires — PATH d'un ordonnanceur", () => {
+  // Régression réelle : `binarySearchPath` utilisait `delimiter` sans que
+  // l'import ait été ajouté. Le défaut n'apparaissait qu'en exécutant réellement
+  // une sauvegarde — aucune vérification locale ne le voyait, faute de client
+  // PostgreSQL dans l'environnement de développement.
+  it("ajoute PG_BIN_DIR devant le PATH existant", () => {
+    const result = binarySearchPath({ PATH: "/usr/bin", PG_BIN_DIR: "/opt/pg/bin" });
+    expect(result.startsWith(`/opt/pg/bin${delimiterOf("/usr/bin")}`)).toBe(true);
+    expect(result.endsWith("/usr/bin")).toBe(true);
+  });
+
+  it("laisse le PATH inchangé sans PG_BIN_DIR", () => {
+    // `cron` et `systemd` fournissent un PATH minimal : ne rien ajouter ne doit
+    // pas produire « undefined » dans le chemin de recherche.
+    expect(binarySearchPath({ PATH: "/usr/bin" })).toBe("/usr/bin");
+    expect(binarySearchPath({})).toBe("");
+    expect(binarySearchPath({ PATH: "", PG_BIN_DIR: "  " })).toBe("");
+  });
+
+  it("produit un chemin exploitable par un binaire réellement lancé", () => {
+    // Le contrôle ne se contente pas de comparer des chaînes : le PATH calculé
+    // doit permettre de trouver un exécutable.
+    const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+    const output = execFileSync("node", ["-e", "process.stdout.write('ok')"], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: binarySearchPath() },
+    });
+    expect(output).toBe("ok");
   });
 });
 

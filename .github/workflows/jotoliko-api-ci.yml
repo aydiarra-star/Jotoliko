@@ -126,6 +126,28 @@ jobs:
           fi
           exit "$code"
 
+      - name: Typecheck des scripts d'exploitation
+        # `checkJs` sur `ops/` : attrape les identifiants non définis et les
+        # contrats de données violés **avant** l'exécution. Le défaut réel qui a
+        # motivé ce contrôle (un import manquant dans le socle partagé) n'était
+        # visible ni à la compilation TypeScript, ni à la lecture, ni en local —
+        # seulement en exécutant le script sur PostgreSQL, en CI.
+        working-directory: ${{ github.workspace }}
+        run: |
+          set +e
+          npx tsc -p ops/tsconfig.json > ops-tsc.log 2>&1
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            n=0
+            while IFS= read -r line && [ "$n" -lt 40 ]; do
+              [ -z "$line" ] && continue
+              echo "::error title=OPS-TSC(${n})::$(printf '%s' "$line" | head -c 900)"
+              n=$((n + 1))
+            done < ops-tsc.log
+          fi
+          exit "$code"
+
       - name: Build
         run: npm run build
 

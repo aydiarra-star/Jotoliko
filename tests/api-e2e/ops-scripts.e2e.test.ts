@@ -68,8 +68,20 @@ const TOOLS_AVAILABLE = Boolean(PG_DUMP && PG_RESTORE);
 
 type OpsRun = { status: number | null; stdout: string; stderr: string };
 
-/** Exécute un script d'exploitation comme le ferait un ordonnanceur. */
-function runOps(script: string, args: string[], env: Record<string, string> = {}): OpsRun {
+/**
+ * Exécute un script d'exploitation comme le ferait un ordonnanceur.
+ *
+ * `expectedRefusal` neutralise la publication d'annotations : un refus **attendu**
+ * par le test ne doit pas apparaître comme une erreur dans les annotations d'un
+ * job vert. C'est la même règle que pour la suite de tests elle-même : seuls les
+ * échecs réels sont publiés.
+ */
+function runOps(
+  script: string,
+  args: string[],
+  env: Record<string, string> = {},
+  { expectedRefusal = false }: { expectedRefusal?: boolean } = {}
+): OpsRun {
   const result = spawnSync(process.execPath, [join(REPO_ROOT, "ops", script), ...args], {
     cwd: REPO_ROOT,
     encoding: "utf8",
@@ -79,6 +91,7 @@ function runOps(script: string, args: string[], env: Record<string, string> = {}
       // prévue pour cela (`PG_BIN_DIR`) plutôt que par un `PATH` reconstruit :
       // c'est exactement le chemin de code qu'emprunte un ordonnanceur.
       ...(PG_BIN ? { PG_BIN_DIR: PG_BIN } : {}),
+      ...(expectedRefusal ? { GITHUB_ACTIONS: "false" } : {}),
       ...env,
     },
   });
@@ -271,7 +284,7 @@ httpSuite("Scripts d'exploitation : sauvegarde, restauration, rétention, superv
     const withWrongKey = runOps("restore-verify.mjs", [`--from=${encryptedRoot}`], {
       ...env,
       BACKUP_ENCRYPTION_KEY_FILE: wrongKey,
-    });
+    }, { expectedRefusal: true });
     expect(withWrongKey.status).not.toBe(0);
     expect(`${withWrongKey.stdout}${withWrongKey.stderr}`).toMatch(/RESTAURATION-ECHEC|déchiffrement/);
 
@@ -308,7 +321,7 @@ httpSuite("Scripts d'exploitation : sauvegarde, restauration, rétention, superv
 
     // 1. Sans date limite : refus. La durée de conservation est une décision
     //    humaine, elle ne peut pas être implicite.
-    const sansDate = runOps("prune-proofs.mjs", ["--confirm"], env);
+    const sansDate = runOps("prune-proofs.mjs", ["--confirm"], env, { expectedRefusal: true });
     expect(sansDate.status).not.toBe(0);
     expect(`${sansDate.stdout}${sansDate.stderr}`).toMatch(/durée de conservation|--before/);
     expect(existsSync(ancienne.path)).toBe(true);
@@ -355,7 +368,7 @@ httpSuite("Scripts d'exploitation : sauvegarde, restauration, rétention, superv
     expect(disponible.storageMinFreeBytes).toBeGreaterThan(0);
 
     // 2. Service absent : code 2 — « intervenir », pas « surveiller ».
-    const absent = runOps("healthcheck.mjs", [`--url=http://127.0.0.1:${await closedPort()}`], {});
+    const absent = runOps("healthcheck.mjs", [`--url=http://127.0.0.1:${await closedPort()}`], {}, { expectedRefusal: true });
     expect(absent.status).toBe(2);
     expect(JSON.parse(absent.stdout).state).toBe("INDISPONIBLE");
 
@@ -379,21 +392,30 @@ httpSuite("Scripts d'exploitation : sauvegarde, restauration, rétention, superv
   suite("la sonde n'invente pas de succès quand rien ne répond", async () => {
     // Un outil de supervision qui renvoie 0 sans avoir joint le service est plus
     // dangereux que pas d'outil du tout.
-    const run = runOps("healthcheck.mjs", [`--url=http://127.0.0.1:${await closedPort()}`, "--timeout=2000"], {});
+    const run = runOps(
+      "healthcheck.mjs",
+      [`--url=http://127.0.0.1:${await closedPort()}`, "--timeout=2000"],
+      {},
+      { expectedRefusal: true }
+    );
     expect(run.status).toBe(2);
     expect(run.stdout).toMatch(/INDISPONIBLE/);
   }, 30_000);
 
   suite("les scripts refusent une configuration incomplète plutôt que de produire un faux succès", () => {
-    const sansUrl = runOps("backup.mjs", [], { BACKUP_DIR: sealedRoot, PROOF_STORAGE_DIR: proofStorageDir });
+    const sansUrl = runOps("backup.mjs", [], { BACKUP_DIR: sealedRoot, PROOF_STORAGE_DIR: proofStorageDir }, {
+      expectedRefusal: true,
+    });
     expect(sansUrl.status).not.toBe(0);
     expect(`${sansUrl.stdout}${sansUrl.stderr}`).toMatch(/DATABASE_URL/);
 
     // Une sauvegarde de la base seule : les preuves resteraient sans protection.
-    const sansPreuves = runOps("backup.mjs", [], {
-      DATABASE_URL: process.env.DATABASE_URL as string,
-      BACKUP_DIR: sealedRoot,
-    });
+    const sansPreuves = runOps(
+      "backup.mjs",
+      [],
+      { DATABASE_URL: process.env.DATABASE_URL as string, BACKUP_DIR: sealedRoot },
+      { expectedRefusal: true }
+    );
     expect(sansPreuves.status).not.toBe(0);
     expect(`${sansPreuves.stdout}${sansPreuves.stderr}`).toMatch(/PROOF_STORAGE_DIR/);
   }, 60_000);

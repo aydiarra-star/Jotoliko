@@ -169,7 +169,10 @@ jobs:
         # qu'aucun fichier actif ne disparaît.
         run: |
           set -euo pipefail
-          if node ops/prune-proofs.mjs --confirm; then
+          # Le refus est l'issue **attendue** : la publication d'annotations est
+          # neutralisée pour cette invocation, sinon un job vert porterait une
+          # annotation d'échec.
+          if GITHUB_ACTIONS=false node ops/prune-proofs.mjs --confirm; then
             echo "::error title=PURGE-SANS-DATE::la purge a accepté de s'exécuter sans date limite"
             exit 1
           fi
