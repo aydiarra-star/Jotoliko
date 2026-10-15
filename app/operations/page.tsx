@@ -73,8 +73,13 @@ export default function OperationsPage() {
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-600">Jotoliko OS</p>
             <h1 className="text-lg font-semibold">Centre des opérations</h1>
           </div>
-          <div className="hidden rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 sm:block">
-            Mode démonstration — serveur non connecté
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="hidden rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 sm:block">
+              Mode démonstration — serveur non connecté
+            </div>
+            <a href="/espace/" className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-800">
+              Espace connecté <ArrowRight className="h-3.5 w-3.5" />
+            </a>
           </div>
         </div>
       </header>
