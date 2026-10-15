@@ -1,9 +1,10 @@
-import { Body, Controller, HttpCode, Ip, Post } from "@nestjs/common";
+import { Body, Controller, HttpCode, Ip, Param, Post } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { AuthService, type LoginResult } from "./auth.service";
 import { SignupService } from "./signup.service";
 import { LoginDto } from "./dto/login.dto";
 import { SignupDto } from "./dto/signup.dto";
+import { ResumeSignupDto } from "./dto/resume-signup.dto";
 
 @Controller("auth")
 export class AuthController {
@@ -21,6 +22,17 @@ export class AuthController {
   @Throttle({ default: { limit: 3, ttl: 60_000 } })
   createSignup(@Body() body: SignupDto) {
     return this.signup.create(body);
+  }
+
+  /**
+   * Reprise d'une inscription par identifiant et jeton secret.
+   * L'identifiant seul ne révèle aucune information sur l'inscription.
+   */
+  @Post("signup/:id/resume")
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  resumeSignup(@Param("id") id: string, @Body() body: ResumeSignupDto) {
+    return this.signup.resume(id, body.resumeToken);
   }
 
   /**
