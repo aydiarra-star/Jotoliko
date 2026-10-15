@@ -34,4 +34,6 @@ jobs:
       - name: Run isolated billing domain tests
         run: node --test apps/api/src/billing/billing-core.test.mjs
       - name: Validate Prisma schema
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/jotoliko_ci?schema=public
         run: npx --yes prisma@6.19.3 validate --schema prisma/schema.prisma
