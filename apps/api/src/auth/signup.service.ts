@@ -5,13 +5,17 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createSalt, hashPassword } from "./auth.service";
 import { PrismaService } from "../prisma.service";
 import type { SignupDto } from "./dto/signup.dto";
 
 const SIGNUP_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_SEATS = 500;
+
+function hashResumeToken(token: string): string {
+  return createHash("sha256").update(token, "utf8").digest("hex");
+}
 
 function slugifyCompanyName(name: string): string {
   const slug = name.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
@@ -95,6 +99,8 @@ export class SignupService {
 
     const salt = createSalt();
     const passwordHash = hashPassword(input.password, salt);
+    const resumeToken = randomBytes(32).toString("hex");
+    const resumeTokenHash = hashResumeToken(resumeToken);
     const expiresAt = new Date(now.getTime() + SIGNUP_TTL_MS);
     const slugBase = slugifyCompanyName(companyName);
     // A unique suffix prevents two concurrent attempts for similarly named companies
@@ -111,6 +117,7 @@ export class SignupService {
           ownerLastName: lastName,
           passwordHash,
           passwordSalt: salt,
+          resumeTokenHash,
           seatCount: input.seatCount,
           planPriceId: price.id,
           expiresAt,
@@ -120,6 +127,8 @@ export class SignupService {
 
       return {
         signupAttemptId: attempt.id,
+        // Jeton secret renvoyé une seule fois. L’empreinte seule est conservée.
+        resumeToken,
         status: attempt.status,
         expiresAt: attempt.expiresAt,
         createdAt: attempt.createdAt,
@@ -144,4 +153,59 @@ export class SignupService {
       throw error;
     }
   }
+  /**
+   * Reprise par jeton secret à haute entropie. L'identifiant seul ne suffit pas.
+   * Les tentatives expirées sont marquées sans supprimer l'historique.
+   */
+  async resume(signupAttemptId: string, resumeToken: string) {
+    const tokenHash = hashResumeToken(resumeToken);
+    const attempt = await this.prisma.signupAttempt.findFirst({
+      where: { id: signupAttemptId, resumeTokenHash: tokenHash },
+      include: {
+        planPrice: {
+          select: { code: true, version: true, currency: true, unitPriceXof: true },
+        },
+      },
+    });
+
+    if (!attempt) {
+      throw new ConflictException({
+        code: "SIGNUP_RESUME_INVALID",
+        message: "Lien de reprise invalide ou indisponible.",
+      });
+    }
+
+    if (attempt.status === "PENDING_PAYMENT" && attempt.expiresAt <= new Date()) {
+      await this.prisma.signupAttempt.update({
+        where: { id: attempt.id },
+        data: { status: "EXPIRED" },
+      });
+      throw new ConflictException({
+        code: "SIGNUP_EXPIRED",
+        message: "Cette inscription a expiré. Recommencez le parcours.",
+      });
+    }
+
+    return {
+      signupAttemptId: attempt.id,
+      status: attempt.status,
+      expiresAt: attempt.expiresAt,
+      companyName: attempt.companyName,
+      ownerEmail: attempt.ownerEmail,
+      ownerFirstName: attempt.ownerFirstName,
+      ownerLastName: attempt.ownerLastName,
+      pricing: {
+        planCode: attempt.planPrice.code,
+        planVersion: attempt.planPrice.version,
+        currency: attempt.planPrice.currency,
+        unitPriceXof: attempt.planPrice.unitPriceXof,
+        seatCount: attempt.seatCount,
+        monthlyAmountXof: attempt.planPrice.unitPriceXof * attempt.seatCount,
+      },
+      nextStep: attempt.status === "PENDING_PAYMENT"
+        ? "PAYMENT_PROVIDER_NOT_CONFIGURED"
+        : "CONTACT_SUPPORT",
+    };
+  }
+
 }
