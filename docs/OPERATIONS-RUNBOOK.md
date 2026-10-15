@@ -36,11 +36,15 @@ Tests associés :
   scripts sur PostgreSQL, avec un volume de preuves contenant de vrais fichiers.
 - `scripts/api-offline-smoke.mjs` — sondes de santé sans base de données.
 
-> **Ce qui n'existe pas.** Aucun environnement de staging n'est provisionné, aucune
-> sauvegarde planifiée de production n'est en place, aucune alerte n'est branchée
-> sur un canal réel. Les mesures publiées par la CI proviennent d'une base de test
-> PostgreSQL 16 dans un exécuteur GitHub — voir §5 pour ce que cela vaut, et ce que
-> cela ne vaut pas.
+> **Ce qui n'existe pas encore en environnement réel.** Aucun environnement de staging
+> n'est provisionné, aucune sauvegarde planifiée de production n'est en place et
+> aucun destinataire de notification n'est configuré. Le script de santé et le
+> script de sauvegarde savent maintenant envoyer une notification ntfy si
+> `JOTOLIKO_NTFY_URL` (ou `BACKUP_NTFY_URL`) est configuré, mais le canal n'est
+> pas actif tant que le serveur et le sujet privé ne sont pas renseignés.
+> Les mesures publiées par la CI proviennent d'une base de test PostgreSQL 16 dans
+> un exécuteur GitHub — voir §5 pour ce que cela vaut, et ce que cela ne vaut pas.
+> Voir aussi `docs/ALERTS-BACKUPS-QUICKSTART.md` pour le guide d'activation.
 
 ---
 
