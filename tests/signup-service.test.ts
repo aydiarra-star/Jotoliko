@@ -7,7 +7,6 @@ function makeService() {
   const prisma = {
     planPrice: { findFirst: vi.fn() },
     user: { findUnique: vi.fn().mockResolvedValue(null) },
-    company: { findUnique: vi.fn().mockResolvedValue(null) },
     signupAttempt: {
       findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({
@@ -59,10 +58,12 @@ describe("SignupService", () => {
     expect(call.data.status).toBeUndefined(); // database default is PENDING_PAYMENT
     expect(call.data.passwordHash).not.toBe(validInput.password);
     expect(call.data.passwordSalt).toBeTruthy();
+    expect(call.data.resumeTokenHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.resumeToken).toMatch(/^[a-f0-9]{64}$/);
+    expect(call.data.resumeTokenHash).not.toBe(result.resumeToken);
     expect(result.status).toBe("PENDING_PAYMENT");
     expect(result.pricing.monthlyAmountXof).toBe(15000);
     expect(result.nextStep).toBe("PAYMENT_PROVIDER_NOT_CONFIGURED");
-    expect(prisma.company.findUnique).toHaveBeenCalledOnce();
     expect(prisma.user.findUnique).toHaveBeenCalledOnce();
   });
 
@@ -82,4 +83,41 @@ describe("SignupService", () => {
     });
     expect(prisma.signupAttempt.create).not.toHaveBeenCalled();
   });
+  it("reprend une tentative uniquement avec le jeton secret correspondant", async () => {
+    const { service, prisma } = makeService();
+    prisma.signupAttempt.findFirst.mockResolvedValue(null);
+
+    await expect(service.resume("attempt-uuid", "a".repeat(64))).rejects.toMatchObject({
+      response: { code: "SIGNUP_RESUME_INVALID" },
+    });
+    expect(prisma.signupAttempt.update).toBeUndefined();
+  });
+
+  it("renvoie l'état et le tarif lors d'une reprise autorisée", async () => {
+    const { service, prisma } = makeService();
+    const token = "a".repeat(64);
+    const { createHash } = await import("node:crypto");
+    prisma.signupAttempt.findFirst.mockResolvedValue({
+      id: "attempt-uuid",
+      status: "PENDING_PAYMENT",
+      expiresAt: new Date(Date.now() + 60_000),
+      companyName: "Atelier Diarra",
+      ownerEmail: "owner@example.com",
+      ownerFirstName: "Awa",
+      ownerLastName: "Diarra",
+      seatCount: 3,
+      planPrice: { code: "PRO", version: 2, currency: "XOF", unitPriceXof: 5000 },
+    } as never);
+
+    const result = await service.resume("attempt-uuid", token);
+    expect(prisma.signupAttempt.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        id: "attempt-uuid",
+        resumeTokenHash: createHash("sha256").update(token, "utf8").digest("hex"),
+      },
+    }));
+    expect(result.pricing.monthlyAmountXof).toBe(15000);
+    expect(result.nextStep).toBe("PAYMENT_PROVIDER_NOT_CONFIGURED");
+  });
+
 });
