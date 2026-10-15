@@ -57,13 +57,13 @@ export default function HomePage() {
             <Reveal delay={0.24}>
               <ul className="mt-9 flex flex-wrap gap-x-6 gap-y-3 text-sm text-ink-500">
                 <li className="inline-flex items-center gap-2">
-                  <CloudOff className="h-4 w-4 text-brand" /> Fonctionne hors ligne
+                  <CloudOff className="h-4 w-4 text-brand" /> Conçu pour le réseau intermittent
                 </li>
                 <li className="inline-flex items-center gap-2">
-                  <Wallet className="h-4 w-4 text-brand" /> Cash tracé au centime
+                  <Wallet className="h-4 w-4 text-brand" /> Cash traçable et rapprochable
                 </li>
                 <li className="inline-flex items-center gap-2">
-                  <ShieldCheck className="h-4 w-4 text-brand" /> Données isolées par entreprise
+                  <ShieldCheck className="h-4 w-4 text-brand" /> Isolation serveur prévue pour la version SaaS
                 </li>
               </ul>
             </Reveal>
@@ -194,9 +194,7 @@ export default function HomePage() {
               </span>
               <h3 className="mt-6 text-2xl font-semibold">Conçu pour le réseau qui vacille.</h3>
               <p className="mt-4 leading-relaxed text-ink-500">
-                Un livreur sans réseau reste un livreur. Missions, déclarations de livraison et
-                encaissements sont enregistrés sur le téléphone, puis synchronisés dès que la
-                connexion revient. Aucune livraison n&apos;est perdue.
+                L&apos;architecture cible prévoit un fonctionnement résilient avec réseau intermittent. La version publique actuelle ne simule pas une synchronisation serveur et ne promet aucune donnée comme synchronisée sans confirmation réelle.
               </p>
             </div>
           </Reveal>
@@ -207,9 +205,7 @@ export default function HomePage() {
               </span>
               <h3 className="mt-6 text-2xl font-semibold">Le cash tracé jusqu&apos;à la remise.</h3>
               <p className="mt-4 leading-relaxed text-ink-500">
-                Jotoliko enregistre ce que chaque livreur encaisse, calcule ce qu&apos;il doit
-                reverser et met en évidence le moindre écart. C&apos;est là que le produit devient
-                indispensable à votre quotidien.
+                Le modèle produit sépare montant attendu, encaissé, remis et écart. La traçabilité financière complète dépend encore du backend sécurisé et du stockage serveur.
               </p>
             </div>
           </Reveal>
