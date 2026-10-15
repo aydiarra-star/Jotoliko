@@ -260,19 +260,28 @@ try {
   annotate("error", "SAUVEGARDE-ECHEC", message);
   console.error(`\n[ÉCHEC] Sauvegarde interrompue : ${message}`);
 
-  // Crochet d'alerte : exécuté seulement s'il est configuré. Une alerte sans
-  // destinataire réel n'existe pas — le message précédent est la seule trace.
-  if (config?.alertCommand) {
+  // Notification push facultative, sans dépendance à GitHub. L’URL ntfy est un secret.
+  const ntfyUrl = process.env.BACKUP_NTFY_URL?.trim() || process.env.JOTOLIKO_NTFY_URL?.trim();
+  if (ntfyUrl) {
+    try {
+      await sendNtfyNotification(ntfyUrl, "La sauvegarde Jotoliko a échoué : " + message, {
+        title: "Jotoliko — échec sauvegarde",
+        priority: 5,
+      });
+      console.error("[ALERTE] Notification de sauvegarde envoyée.");
+    } catch (alertError) {
+      console.error("[ALERTE NON TRANSMISE] " + (alertError instanceof Error ? alertError.message : "échec inconnu"));
+    }
+  } else if (config?.alertCommand) {
+    // Compatibilité avec le mécanisme historique.
     const alert = spawnSync(config.alertCommand, [message], { encoding: "utf8", shell: false });
     if (alert.error || alert.status !== 0) {
-      console.error(`[ALERTE NON TRANSMISE] ${config.alertCommand} : ${alert.error?.message ?? `code ${alert.status}`}`);
+      console.error("[ALERTE NON TRANSMISE] commande configurée : " + (alert.error?.message ?? ("code " + alert.status)));
     } else {
       console.error("Alerte transmise.");
     }
   } else {
-    console.error(
-      "Aucun BACKUP_ALERT_COMMAND configuré : cette défaillance n'est signalée que par ce message et ce code de sortie."
-    );
+    console.error("Aucune notification configurée : cette défaillance n’est signalée que par ce message et ce code de sortie.");
   }
   process.exit(1);
 }
