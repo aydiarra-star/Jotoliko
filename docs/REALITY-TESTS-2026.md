@@ -5,7 +5,10 @@
 > été constaté. Aucun test n'est déclaré « vert » sans exécution.
 
 Dernière exécution : branche `arena/dd76021f-jotoliko`.
-Commande : `npm test` (racine) — **106 réussis, 1 ignoré, 0 échec** sur 4 fichiers.
+Commande : `npm test` (racine) — **114 réussis, 1 ignoré, 0 échec** sur 5 fichiers.
+
+Vérification GitHub Actions (PR #4) : **3/3 jobs verts**, dont
+« Reality tests sur PostgreSQL 16 réel », où le cas de concurrence réel s'exécute.
 
 ## Comment exécuter
 
@@ -35,8 +38,8 @@ test ignoré est visible, un test simulé mentirait.
 | 9 | Coordonnées hors limites rejetées | `domain.reality.test.ts` + base | ✅ 3 tests domaine (dont bornes exactes) + 1 test SQL (`CHECK` moteur) |
 | 10 | Une transition de statut interdite est refusée | `domain.reality.test.ts` | ✅ 4 tests : `EN_ROUTE → LIVREE` refusé, parcours nominal, `RETOUR` terminal, reprogrammation |
 | 11 | Une mutation métier produit un événement d'audit | `database.reality.test.ts` | ✅ 3 tests : avant/après + `requestId`, aucun audit si la transaction est annulée, trace conservée après suppression de l'utilisateur |
-| 12 | Les migrations fonctionnent sur une base propre | `database.reality.test.ts` | ✅ 4 tests : tables, types énumérés, rejeu refusé, **garde-fou anti-dérive schéma ⇄ migration** |
-| 13 | Les opérations concurrentes ne corrompent pas les montants | `database.reality.test.ts` | ⚠️ 5 tests exécutés + 1 **CI uniquement** : les `CHECK` et l'atomicité transactionnelle sont vérifiés localement ; l'entrelacement de deux connexions simultanées exige un vrai serveur (`DATABASE_URL`), il est donc ignoré en local |
+| 12 | Les migrations fonctionnent sur une base propre | `database.reality.test.ts` + `schema-drift.test.ts` | ✅ 4 + 8 tests : **25 tables**, **10 énumérations**, rejeu refusé, types et nullabilité de chaque colonne, index, unicité, clés primaires et étrangères |
+| 13 | Les opérations concurrentes ne corrompent pas les montants | `database.reality.test.ts` | ✅ 5 tests en local + 1 **exécuté en CI sur un vrai serveur** : deux insertions simultanées, exactement une acceptée par la contrainte d'unicité, un seul mouvement d'espèces créé |
 | 14 | Pas d'accès aux preuves d'une autre entreprise | `database.reality.test.ts` | ✅ 1 test : la référence de preuve n'est restituée qu'à l'entreprise propriétaire |
 | 15 | Une erreur réseau ne perd pas silencieusement une opération | `domain.reality.test.ts` | ✅ 7 tests : conservation après échec, aucune confirmation sans accusé serveur, pas de doublon, reprise, horodatage appareil ≠ serveur |
 | 16 | Les parcours principaux fonctionnent de bout en bout | `database.reality.test.ts` | ✅ 2 tests : affectation → livraison → encaissement → remise avec caisse explicable ligne à ligne ; clôture inter-entreprises refusée |
@@ -60,7 +63,8 @@ test ignoré est visible, un test simulé mentirait.
    réel est ignoré en local et exécuté en CI sur un conteneur `postgres:16`.
    Les garanties locales portent sur les contraintes `CHECK`, `UNIQUE` et
    l'atomicité transactionnelle, qui sont bien appliquées par le moteur.
-2. **Tests HTTP de l'API** : aucun test de bout en bout via HTTP n'existe. Les
+2. **Tests HTTP de l'API** : aucun test de bout en bout via HTTP n'existe — c'est
+   la principale lacune restante. Les
    règles d'autorisation sont testées au niveau du domaine partagé, et les
    contraintes au niveau de la base ; la couche contrôleur NestJS n'est pas
    couverte par des tests. **C'est la principale lacune de test restante.**

@@ -4,6 +4,13 @@
 **Branche** : `arena/dd76021f-jotoliko` (depuis `main` = `3b0f3b7`)
 **Périmètre** : audit, réconciliation, correction, tests et préparation au pilote
 **PR examinée** : [#3](https://github.com/aydiarra-star/Jotoliko/pull/3) — « Jotoliko OS — transformation terrain africaine 2026 »
+**PR produite** : [#4](https://github.com/aydiarra-star/Jotoliko/pull/4) — 3/3 vérifications **vertes** (vérifiées sur GitHub Actions)
+
+| Vérification | Résultat | Durée |
+| --- | --- | --- |
+| `Jotoliko API CI` — API (Prisma, migrations, build) | ✅ **pass** | 1 min 07 |
+| `Jotoliko OS CI` — Site + invariants + PostgreSQL embarqué | ✅ **pass** | 44 s |
+| `Jotoliko OS CI` — Reality tests sur PostgreSQL 16 réel | ✅ **pass** | 45 s |
 
 > **Aucune affirmation de production.** La décision finale figure en §10 et
 > s'appuie uniquement sur des commandes exécutées, dont les résultats sont
@@ -105,6 +112,48 @@ auditable. La PR #3 elle-même n'a **pas** été fermée, fusionnée ni modifié
 - `lint` retiré des scripts : ESLint n'était pas installé et `next lint`
   déclenchait une installation interactive, incompatible avec la CI.
 
+### 2.1 bis Cinq défauts supplémentaires révélés par l'exécution réelle de la CI
+
+Le premier passage des workflows a échoué, et **chaque échec a été diagnostiqué
+puis corrigé** — aucun n'a été contourné en désactivant un contrôle. Les
+journaux du runner n'étant pas téléchargeables depuis l'environnement d'audit,
+les erreurs sont publiées en *annotations*, lisibles via l'API des check-runs.
+
+1. **`prisma/migrations/migration_lock.toml` manquant.** Prisma ne pouvait pas
+   déterminer le connecteur : le contrôle de dérive échouait *sans jamais
+   comparer le schéma* (`Could not determine the connector from the migrations
+   directory`). Fichier normalement créé par `prisma migrate dev` ; absent parce
+   que les migrations ont été écrites à la main.
+2. **25 `DEFAULT gen_random_uuid()::text` en trop.** Le diff Prisma était
+   explicite : `Altered column id (default changed from
+   Some(DbGenerated(Some("(gen_random_uuid())::text"))) to None)`.
+   `@default(uuid())` est une valeur générée **côté client** : aucun `DEFAULT` ne
+   doit exister en base. C'était la source réelle de la dérive, sur chaque table.
+3. **`$queryRaw` refuse une chaîne brute.** Le vrai client n'accepte qu'un
+   littéral étiqueté ou un fragment `Prisma.Sql`. Les requêtes construites
+   dynamiquement sont désormais composées avec `Prisma.sql` / `Prisma.join`,
+   donc intégralement paramétrées.
+4. **Bug latent de niveau production** : la liste de colonnes était interpolée
+   dans un littéral étiqueté, ce qui la transforme en *paramètre lié*. La requête
+   aurait produit `SELECT $1 FROM missions` et échoué à l'exécution. Corrigé via
+   `Prisma.raw` (constante du code, jamais une entrée utilisateur).
+5. **`Parameters<Parameters<PrismaService["$transaction"]>[0]>[0]`** retenait la
+   mauvaise surcharge : le vrai `$transaction` est surchargé, donc l'extraction
+   désignait la forme tableau et non la forme rappel. Remplacé par le type
+   officiel **`Prisma.TransactionClient`**.
+
+De plus, le job « Reality tests sur PostgreSQL 16 réel » a révélé une **régression
+que le local ne pouvait pas montrer** : les deux suites de tests ouvrent la même
+base externe lorsque `DATABASE_URL` est fourni, et se recréaient mutuellement le
+schéma en s'exécutant en parallèle. En local, chaque worker PGlite possède sa
+propre base, donc le défaut restait invisible. Les fichiers de test s'exécutent
+désormais séquentiellement.
+
+> Ces cinq points illustrent la valeur du contrôle : le substitut local, trop
+> permissif, avait laissé passer les points 3, 4 et 5. Il dérive maintenant sa
+> surface SQL brute du **runtime Prisma réel** livré avec le paquet, et non plus
+> d'une réimplémentation approximative.
+
 ### 2.2 Faire converger le modèle de données
 
 - **Un seul schéma Prisma** : `prisma/schema.prisma`. Le doublon
@@ -118,7 +167,12 @@ auditable. La PR #3 elle-même n'a **pas** été fermée, fusionnée ni modifié
   rend un écart de caisse explicable ligne à ligne.
 - `MutationKey` : `@@unique([companyId, operation, idempotencyKey])` — l'unicité
   est cloisonnée par entreprise *et* par opération, plus une empreinte de requête.
-- **Migration versionnée** `prisma/migrations/20261015000000_init_operational_core/`
+- **Deux migrations versionnées** couvrant **les 25 modèles et les 10 énumérations**
+  du schéma : `20261015000000_init_operational_core/` (socle multi-entreprise,
+  couche opérationnelle, caisse, idempotence, audit) et
+  `20261015120000_mvp_catalogue_and_delivery/` (référentiels, commandes,
+  livraison, preuves, paiements, remises, notifications, réglages).
+  Détail de la première :
   avec contraintes portées par le moteur :
   `CHECK (remittedAmount <= collectedAmount)`, montants `>= 0`, latitude
   `[-90, 90]`, longitude `[-180, 180]`, unicité `(companyId, reference)`,
@@ -203,7 +257,7 @@ l'appareil est conservé distinct de celui du serveur.
 
 ## 3. Fichiers et modules modifiés
 
-**49 fichiers, +9200 / −680.**
+**73 fichiers, +11639 / −389** (dont le contenu intégral de la PR #3).
 
 | Zone | Contenu |
 | --- | --- |
@@ -229,12 +283,13 @@ sorties sont reproduites fidèlement.
 
 | Commande | Résultat observé |
 | --- | --- |
-| `npm test` | **4 fichiers, 106 réussis, 1 ignoré, 0 échec** (3,1 s) |
+| `npm test` | **5 fichiers, 114 réussis, 1 ignoré, 0 échec** |
 | `npm run typecheck` | **0 erreur** |
 | `npm run build` (site) | **« ✓ Compiled successfully »**, « ✓ Exporting (2/2) », 19 routes exportées |
 | `npm run api:typecheck` | **0 erreur** |
 | `npm run api:build` | succès ; `dist/apps/api/src/main.js` présent |
-| `npm run test:db` | 23 tests, 1 ignoré (concurrence CI uniquement) |
+| `npm run test:db` | 23 tests, 1 ignoré (concurrence exécutée en CI) |
+| GitHub Actions (PR #4) | **3/3 vérifications vertes** |
 
 ### Détail des fichiers de test
 
@@ -243,7 +298,8 @@ sorties sont reproduites fidèlement.
 | `lib/tracking.test.ts` | 29 | — |
 | `lib/jotoliko-os/core.test.ts` | 5 | — |
 | `tests/reality/domain.reality.test.ts` | 50 | — |
-| `tests/reality/database.reality.test.ts` | 23 (+1 ignoré) | **PostgreSQL 16.4 réel** |
+| `tests/reality/database.reality.test.ts` | 23 (+1 ignoré en local) | **PostgreSQL 16.4 réel** |
+| `tests/reality/schema-drift.test.ts` | 8 | **PostgreSQL 16.4 réel** |
 
 Les tests de base de données s'exécutent sur du **vrai PostgreSQL** :
 `select version()` → `PostgreSQL 16.4 on x86_64-pc-linux-gnu`. Les contraintes
@@ -252,19 +308,27 @@ l'annulation de transaction est réellement observée. Il n'y a **aucune imitati
 de base de données**.
 
 Le test #13 d'entrelacement de deux connexions simultanées est **ignoré** en
-local (PGlite est mono-connexion) et s'exécute en CI sur `postgres:16`. Il n'est
-pas simulé : un test simulé mentirait sur la garantie.
+local (PGlite est mono-connexion) et **s'exécute réellement en CI** sur
+`postgres:16` : la vérification « Reality tests sur PostgreSQL 16 réel » est
+verte, ce qui signifie que les deux insertions concurrentes ont bien été jouées,
+que la contrainte d'unicité a arbitré la course, et qu'exactement un mouvement
+d'espèces a été créé. Il n'est pas simulé.
 
 ### Ce qui n'a PAS pu être exécuté ici
 
-| Élément | Raison | Où c'est vérifié |
+| Élément | Raison locale | État vérifié |
 | --- | --- | --- |
-| `prisma validate` | `binaries.prisma.sh` inaccessible (hôte hors du périmètre réseau autorisé) | CI (`jotoliko-api-ci.yml`) |
-| `prisma generate` | idem | CI |
-| `prisma migrate deploy` | idem | CI, sur `postgres:16` |
-| `prisma migrate diff` (dérive) | idem | CI |
-| Concurrence réelle 2 connexions | PGlite mono-connexion | CI, sur `postgres:16` |
-| `npm ci` en environnement vierge | vérifié localement après régénération du verrou, pas sur un runner propre | CI |
+| `prisma validate` | `binaries.prisma.sh` inaccessible (hôte hors du périmètre réseau autorisé) | ✅ **exécuté en CI — succès** |
+| `prisma generate` | idem | ✅ **exécuté en CI — succès** |
+| `prisma migrate deploy` | idem | ✅ **exécuté en CI sur `postgres:16` — succès** |
+| `prisma migrate diff` (dérive) | idem | ✅ **exécuté en CI — succès, aucune dérive** |
+| Concurrence réelle, 2 connexions | PGlite mono-connexion | ✅ **exécutée en CI sur `postgres:16` — succès** |
+| `npm ci` sur runner propre | non applicable localement | ✅ **exécuté en CI — succès** |
+
+La détection de dérive est donc vérifiée **par deux chemins indépendants** :
+`prisma migrate diff --exit-code` (CI, moteurs Prisma réels) et
+`tests/reality/schema-drift.test.ts` (partout, introspection du catalogue
+PostgreSQL).
 
 Pour ne pas laisser l'API non vérifiable, un **substitut de types** est dérivé du
 schéma réel par `node apps/api/scripts/local-prisma-stub.mjs` (25 modèles,
@@ -282,7 +346,8 @@ schéma réel par `node apps/api/scripts/local-prisma-stub.mjs` (25 modèles,
 | Migration appliquée sur PostgreSQL réel | ✅ exécutée (PGlite, PostgreSQL 16.4) |
 | Déploiement en staging | ❌ **non effectué** — aucun environnement de staging n'existe ni n'est accessible |
 | Déploiement en production | ❌ **non effectué** — volontairement, aucune autorisation et aucun environnement cible |
-| Publication GitHub Pages | ⚠️ workflow restauré et vérifié par typecheck+build en amont, mais **la publication réelle n'a pas été déclenchée** depuis cette branche |
+| Vérifications CI (3 jobs) | ✅ **exécutées et vertes** sur GitHub Actions — voir PR [#4](https://github.com/aydiarra-star/Jotoliko/pull/4) |
+| Publication GitHub Pages | ⚠️ workflow restauré ; il ne se déclenche que sur `main`, donc **la publication réelle n'a pas été déclenchée** depuis cette branche |
 
 ---
 
@@ -364,9 +429,9 @@ rapport. `AUTH_SECRET=""` est volontairement vide dans `.env.example`.
 | --- | --- | --- | --- |
 | R1 | Aucun test HTTP sur les contrôleurs API | **Élevée** | Règles couvertes au niveau domaine et base ; la couche NestJS n'est pas testée. À faire avant pilote. |
 | R2 | Preuves de livraison non stockées | **Élevée** | Une livraison peut être validée avec une référence de preuve non vérifiable. Stockage objet requis. |
-| R3 | Tables du modèle MVP non migrées | **Moyenne** | Dérive détectée automatiquement en CI (`migrate diff --exit-code`) ; aucun code ne les utilise. |
-| R4 | Concurrence non vérifiée localement | **Moyenne** | Couverte en CI sur `postgres:16` ; à confirmer sur le premier run. |
-| R5 | `prisma generate`/`migrate` jamais exécutés ici | **Moyenne** | Vérifiés en CI. Le chemin `output` du générateur est une décision non testée localement. |
+| R3 | Tables du modèle MVP non migrées | **Résolu** | ✅ Migration 0002 : les **25 tables** et **10 énumérations** du schéma sont migrées. Dérive surveillée par deux contrôles indépendants. |
+| R4 | Concurrence non vérifiée localement | **Faible** | ✅ **Vérifiée en CI** sur `postgres:16` (job vert) : deux insertions simultanées, une seule acceptée par la contrainte d'unicité. |
+| R5 | `prisma generate`/`migrate` non exécutables en local | **Faible** | ✅ **Exécutés en CI — succès**, y compris `migrate deploy` sur base vierge et `migrate diff` sans dérive. Le chemin `output` du générateur est donc validé par l'exécution. |
 | R6 | Double modèle `Order` / `Mission` | **Moyenne** | Documenté ; à unifier avant d'ouvrir les commandes. |
 | R7 | Politique de preuve codée en dur | **Faible** | Valeur la plus sûre (preuve exigée) ; à brancher sur `Setting`. |
 | R8 | Aucune observabilité de production | **Moyenne** | Corrélation présente ; métriques, alertes et suivi de file absents. |
@@ -385,15 +450,24 @@ sont pas tous satisfaits par des preuves vérifiables : aucun environnement de
 staging n'existe, aucune sauvegarde/restauration n'a été testée, les preuves de
 livraison ne sont pas stockées, et aucun test HTTP ne couvre les contrôleurs. La
 règle de la roadmap — « aucun passage en production sans preuve d'exécution des
-reality tests » — est respectée : les preuves existent pour le domaine et la base,
-pas pour la chaîne complète.
+reality tests » — est respectée pour le **domaine, la base et la chaîne de CI**,
+mais pas pour la chaîne applicative complète (HTTP de bout en bout).
 
 **Ce qui autorise un pilote technique.** Les invariants critiques sont désormais
-**exécutés et prouvés** : isolation multi-entreprise, refus d'un jeton expiré,
-interdiction de la remise au livreur, encaissement conditionné et borné,
-idempotence garantie par le moteur, atomicité de la caisse, audit corrélé,
-migration reproductible et non dérivante. Les deux workflows de CI qui échouaient
-sont corrigés et vérifiés localement de bout en bout (typecheck, tests, builds).
+**exécutés et prouvés**, et la chaîne CI est verte de bout en bout :
+
+- 114 tests réussis (1 ignoré en local, exécuté en CI), sur un **PostgreSQL 16 réel** ;
+- isolation multi-entreprise, refus d'un jeton expiré, interdiction de la remise
+  au livreur, encaissement conditionné et borné par la base, atomicité de la
+  caisse, audit corrélé et conservé ;
+- **concurrence réellement parallèle** arbitrée par une contrainte de base (CI) ;
+- migrations appliquées sur base vierge, `prisma validate`/`generate`/`deploy`
+  réussis, **aucune dérive** schéma ⇄ migrations, par deux contrôles indépendants ;
+- typecheck et build verts pour le site **et** pour l'API.
+
+Les deux workflows de la PR #3, tous deux en échec, sont aujourd'hui verts. Cinq
+défauts supplémentaires n'ont été découverts qu'en exécutant réellement la CI
+(§2.1 bis) : ils sont corrigés, aucun n'a été masqué en désactivant un contrôle.
 
 **Conditions avant tout pilote** (par ordre d'importance) :
 
@@ -402,9 +476,11 @@ sont corrigés et vérifiés localement de bout en bout (typecheck, tests, build
 2. Mettre en place un staging distinct avec sa propre base et ses propres secrets.
 3. Implémenter le stockage privé des preuves (type, taille, accès, URL signées).
 4. Écrire et **tester** une procédure de sauvegarde/restauration.
-5. Confirmer sur le premier run de CI : `prisma validate`, `generate`,
-   `migrate deploy`, `migrate diff` — jamais exécutés dans cet environnement.
+5. ~~Confirmer sur le premier run de CI~~ — **fait** : `validate`, `generate`,
+   `migrate deploy` et `migrate diff` réussissent, sans dérive.
 6. Brancher `Setting.proofRequired` au lieu de la valeur codée en dur.
+7. Alimenter `gps.at` / `gps.latitude` / `gps.longitude` dans `MissionView`
+   (actuellement renvoyés à `null` alors que les colonnes sont lues).
 
 **Ce qui n'est pas affirmé.** Aucune conformité juridique n'est garantie : les
 obligations applicables (protection des données, conservation des preuves,
@@ -424,7 +500,7 @@ git checkout arena/dd76021f-jotoliko
 npm install
 
 npm run typecheck     # 0 erreur
-npm test              # 106 réussis, 1 ignoré
+npm test              # 114 réussis, 1 ignoré
 npm run build         # export statique, 19 routes
 
 npm --prefix apps/api install

@@ -82,12 +82,9 @@ jobs:
 
       - run: npm ci
 
-      - name: Migration sur base vierge
-        run: |
-          PGPASSWORD=jotoliko psql -h localhost -U jotoliko -d jotoliko_test \
-            -v ON_ERROR_STOP=1 \
-            -f prisma/migrations/20261015000000_init_operational_core/migration.sql
-
+      # Les suites « reality » appliquent elles-mêmes toutes les migrations à
+      # partir de zéro : un pré-application ici serait redondant et masquerait
+      # le fait que la migration est bien rejouable sur base vierge.
       - name: Reality tests (concurrence réelle)
         run: npm test
         env:
