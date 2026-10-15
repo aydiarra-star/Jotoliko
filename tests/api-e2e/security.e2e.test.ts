@@ -61,6 +61,11 @@ httpSuite("HTTP — sécurité, en-têtes et limitation de débit", () => {
     expect(health.body).toEqual({ status: "ok", service: "jotoliko-api" });
     expect(ready.status).toBe(200);
     expect(ready.body).toMatchObject({ status: "ready", checks: { database: "ok" } });
+    // La disponibilité couvre aussi le volume de preuves : une instance capable
+    // de répondre mais incapable d'écrire une preuve ne doit pas être servie.
+    expect(ready.body.checks.storage).toBe("ok");
+    expect(typeof ready.body.storageFreeBytes).toBe("number");
+    expect(ready.body.storageMinFreeBytes).toBeGreaterThan(0);
   });
 
   it("n'exige pas de jeton pour les sondes de santé", async () => {

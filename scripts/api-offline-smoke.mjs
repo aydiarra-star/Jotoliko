@@ -16,7 +16,7 @@
 import { spawn } from "node:child_process";
 import { createHmac } from "node:crypto";
 import { createServer } from "node:net";
-import { existsSync, mkdtempSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -50,6 +50,7 @@ const instances = [];
  */
 async function startApiInstance(label, extraEnv = {}) {
   const port = await freePort();
+  const proofStorageDir = mkdtempSync(join(tmpdir(), "jotoliko-smoke-"));
   const child = spawn(process.execPath, [ENTRYPOINT], {
     cwd: REPO_ROOT,
     env: {
@@ -59,7 +60,7 @@ async function startApiInstance(label, extraEnv = {}) {
       DATABASE_URL: "postgresql://smoke:smoke@127.0.0.1:5432/smoke_sans_base",
       AUTH_SECRET,
       CORS_ORIGIN,
-      PROOF_STORAGE_DIR: mkdtempSync(join(tmpdir(), "jotoliko-smoke-")),
+      PROOF_STORAGE_DIR: proofStorageDir,
       ...extraEnv,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -71,6 +72,7 @@ async function startApiInstance(label, extraEnv = {}) {
   const instance = {
     label,
     baseUrl: `http://127.0.0.1:${port}`,
+    proofStorageDir,
     logs: () => chunks.join(""),
     loginAttempts: 0,
     stop: async () => {
@@ -81,7 +83,7 @@ async function startApiInstance(label, extraEnv = {}) {
   };
   instances.push(instance);
 
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + 40_000;
   let ready = false;
   let exited = false;
   child.on("exit", () => {
@@ -160,6 +162,16 @@ await check("santé (disponibilité) signale la base injoignable", async () => {
   return {
     ok: response.status === 503 && body.checks?.database === "unreachable",
     detail: `HTTP ${response.status} — base ${body.checks?.database}`,
+  };
+});
+
+await check("santé (disponibilité) vérifie aussi le volume de preuves", async () => {
+  const { body } = await api.json("/health/ready");
+  // Les deux contrôles sont indépendants : la base est ici injoignable, le
+  // volume utilisable. Un contrôle qui masquerait l'autre serait inexploitable.
+  return {
+    ok: body.checks?.storage === "ok" && typeof body.storageFreeBytes === "number",
+    detail: `stockage ${body.checks?.storage}, ${Math.round((body.storageFreeBytes ?? 0) / 1048576)} Mio libres, seuil ${Math.round((body.storageMinFreeBytes ?? 0) / 1048576)} Mio`,
   };
 });
 
@@ -301,20 +313,26 @@ await check("jeton valide accepté puis refusé par la base absente", async () =
 });
 
 await check("limitation de débit des connexions", async () => {
-  // La limite est comptée par adresse et par route : les connexions déjà
-  // envoyées plus haut dans ce script consomment le même quota. Le contrôle
-  // s'y adapte au lieu de supposer un compteur vierge.
-  const remaining = Math.max(0, LOGIN_LIMIT_PER_MINUTE - api.loginAttempts);
-  const statuses = [];
-  for (let i = 0; i < remaining + 2; i += 1) {
-    statuses.push((await login(api)).response.status);
+  // Instance **dédiée** : le limiteur compte par processus et par adresse. En
+  // réutilisant l'instance principale, le contrôle dépendait de la durée totale
+  // du script — au-delà de la fenêtre de 60 s, les refus attendus n'apparaissent
+  // plus et l'échec ne dit rien du produit. Un processus neuf rend le contrôle
+  // déterministe sans rien relâcher : les deux refus sont toujours exigés.
+  const quota = await startApiInstance("api-quota");
+  try {
+    const statuses = [];
+    for (let i = 0; i < LOGIN_LIMIT_PER_MINUTE + 2; i += 1) {
+      statuses.push((await login(quota)).response.status);
+    }
+    const allowed = statuses.slice(0, LOGIN_LIMIT_PER_MINUTE);
+    const blocked = statuses.slice(LOGIN_LIMIT_PER_MINUTE);
+    return {
+      ok: allowed.every((s) => s !== 429) && blocked.length === 2 && blocked.every((s) => s === 429),
+      detail: `${LOGIN_LIMIT_PER_MINUTE} connexions tolérées puis ${statuses.join(" → ")}`,
+    };
+  } finally {
+    await quota.stop();
   }
-  const allowed = statuses.slice(0, remaining);
-  const blocked = statuses.slice(remaining);
-  return {
-    ok: remaining > 0 && !allowed.includes(429) && blocked.length === 2 && blocked.every((s) => s === 429),
-    detail: `${api.loginAttempts - statuses.length} connexions précédentes, puis ${statuses.join(" → ")}`,
-  };
 });
 
 await check("aucun secret dans les réponses", async () => {
@@ -325,6 +343,28 @@ await check("aucun secret dans les réponses", async () => {
   });
   const serialized = JSON.stringify(body);
   return { ok: !serialized.includes(AUTH_SECRET), detail: "réponse sans secret" };
+});
+
+await check("volume de preuves non inscriptible → instance retirée du routage", async () => {
+  if (process.getuid?.() === 0) {
+    return { ok: false, detail: "root : le refus d'écriture ne peut pas être éprouvé ici" };
+  }
+  const cible = await startApiInstance("api-volume-ferme");
+  const avant = await cible.json("/health/ready");
+  chmodSync(cible.proofStorageDir, 0o500);
+  try {
+    const apres = await cible.json("/health/ready");
+    return {
+      ok:
+        apres.response.status === 503 &&
+        apres.body.checks?.storage !== "ok" &&
+        avant.body.checks?.storage === "ok",
+      detail: `avant ${avant.body.checks?.storage} (HTTP ${avant.response.status}) → après ${apres.body.checks?.storage} (HTTP ${apres.response.status})`,
+    };
+  } finally {
+    chmodSync(cible.proofStorageDir, 0o700);
+    await cible.stop();
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -374,6 +414,20 @@ console.log("\nContrôle HTTP hors ligne (couches indépendantes de la base)\n")
 for (const result of results) {
   if (!result.ok) failed += 1;
   console.log(`  ${result.ok ? "OK  " : "ÉCHEC"}  ${result.label} — ${result.detail}`);
+  // Publication en annotation : les journaux de l'exécuteur ne sont pas
+  // toujours téléchargeables depuis l'extérieur de la CI, et un contrôle en
+  // échec doit rester diagnosticable là où il s'est produit.
+  if (process.env.GITHUB_ACTIONS === "true") {
+    const flat = String(result.detail ?? "").replace(/\r?\n/g, " | ").slice(0, 900);
+    if (!result.ok) console.log(`::error title=CONTRÔLE-HORS-LIGNE::${result.label} — ${flat}`);
+  }
+}
+if (process.env.GITHUB_ACTIONS === "true") {
+  const level = failed === 0 ? "notice" : "error";
+  console.log(
+    `::${level} title=CONTRÔLE-HORS-LIGNE-BILAN::${results.length - failed}/${results.length} contrôles réussis` +
+      (failed > 0 ? ` — ${results.filter((r) => !r.ok).map((r) => r.label).join(" ; ").slice(0, 400)}` : "")
+  );
 }
 console.log(`\n${results.length - failed}/${results.length} contrôles réussis.`);
 console.log(

@@ -11,3 +11,10 @@ next-env.d.ts
 .vercel
 # Client Prisma généré : appartient au build, jamais au dépôt.
 apps/api/node_modules/.prisma/
+# Preuves de livraison et sauvegardes locales (cf. .env.example : ./var/proofs).
+# Une sauvegarde versionnée serait une fuite de données, et un volume de preuves
+# dans le dépôt n'a aucune raison d'y être.
+var/
+# Rapports d'exercice d'exploitation (restauration, sauvegarde).
+**/restore-report.json
+**/status.json

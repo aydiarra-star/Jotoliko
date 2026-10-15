@@ -16,11 +16,30 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, type ReadStream } from "node:fs";
-import { mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
-import { dirname, resolve, sep } from "node:path";
+import { mkdir, rename, stat, statfs, unlink, writeFile } from "node:fs/promises";
+import { dirname, join, resolve, sep } from "node:path";
 
 /** Taille maximale d'une preuve. Au-delà, le dépôt est refusé (413). */
 export const MAX_PROOF_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Seuil d'alerte d'espace libre du volume de preuves : 256 Mio par défaut.
+ *
+ * Cette valeur n'est pas un optimum calculé, c'est une **hypothèse de départ**
+ * explicitement configurable (`PROOF_STORAGE_MIN_FREE_BYTES`) : elle doit être
+ * ajustée à la taille réelle des preuves et au rythme des livraisons du pilote.
+ * Le rôle du seuil est d'alerter *avant* la saturation, pas de la prévoir.
+ */
+export const DEFAULT_PROOF_STORAGE_MIN_FREE_BYTES = 256 * 1024 * 1024;
+
+/** Diagnostic du volume de preuves, destiné aux sondes et à la supervision. */
+export type StorageHealth = {
+  usable: boolean;
+  /** Raison du refus, en clair et stable, exploitable par une règle d'alerte. */
+  reason: "INDISPONIBLE" | "NON_INSCRIPTIBLE" | "ESPACE_INSUFFISANT" | null;
+  freeBytes: number | null;
+  minFreeBytes: number;
+};
 
 /** Types acceptés, avec l'extension employée sur disque. */
 export const PROOF_MIME_EXTENSIONS: Readonly<Record<string, string>> = {
@@ -98,7 +117,11 @@ const SAFE_SEGMENT = new RegExp(
 );
 
 export class ProofStorage {
-  constructor(private readonly root: string) {}
+  constructor(
+    private readonly root: string,
+    /** Seuil d'alerte d'espace libre, en octets. */
+    private readonly minFreeBytes: number = DEFAULT_PROOF_STORAGE_MIN_FREE_BYTES
+  ) {}
 
   /** Clé stable et déterministe : entreprise / mission / empreinte.extension. */
   static keyFor(companyId: string, missionId: string, sha256: string, mimeType: string): string {
@@ -114,6 +137,49 @@ export class ProofStorage {
    */
   async prepare(): Promise<void> {
     await mkdir(this.root, { recursive: true });
+  }
+
+  /**
+   * Diagnostic du volume, utilisé par `/health/ready` et par la supervision.
+   *
+   * Deux contrôles, pour deux pannes distinctes qui ne se voient pas l'une
+   * l'autre :
+   *  1. une **écriture réelle** (fichier témoin écrit puis supprimé) — un test
+   *     de droit d'accès ne détecte ni un montage exclusivement en lecture, ni un
+   *     disque plein, alors que l'écriture échoue dans les deux cas ;
+   *  2. l'**espace libre** du système de fichiers, comparé à un seuil
+   *     configurable : un dépôt de preuve refusé faute de place ferait échouer une
+   *     livraison devant le client, ce qu'aucun exploitant ne veut découvrir sur
+   *     le terrain.
+   */
+  async health(): Promise<StorageHealth> {
+    let freeBytes: number | null = null;
+    try {
+      const info = await statfs(this.root);
+      // `bavail` : blocs réellement disponibles pour l'utilisateur (hors réserve
+      // root), c'est la valeur qui compte pour prédire un échec d'écriture.
+      freeBytes = Number(info.bavail) * Number(info.bsize);
+    } catch {
+      freeBytes = null;
+    }
+
+    const probe = join(this.root, `.sante-${randomUUID()}`);
+    try {
+      await writeFile(probe, "ok", { mode: 0o600 });
+      await unlink(probe);
+    } catch {
+      return {
+        usable: false,
+        reason: freeBytes === null ? "INDISPONIBLE" : "NON_INSCRIPTIBLE",
+        freeBytes,
+        minFreeBytes: this.minFreeBytes,
+      };
+    }
+
+    if (freeBytes !== null && freeBytes < this.minFreeBytes) {
+      return { usable: false, reason: "ESPACE_INSUFFISANT", freeBytes, minFreeBytes: this.minFreeBytes };
+    }
+    return { usable: true, reason: null, freeBytes, minFreeBytes: this.minFreeBytes };
   }
 
   absolutePath(storageKey: string): string {

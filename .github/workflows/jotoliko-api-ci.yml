@@ -223,6 +223,22 @@ jobs:
           node scripts/emit-vitest-annotations.mjs e2e-report.json e2e.log "$code" || true
           exit "$code"
 
+      - name: Restituer les mesures d'exploitation
+        # Les scripts d'exploitation (sauvegarde, restauration, purge) publient
+        # leurs résultats en commandes de workflow ; pendant les tests, elles sont
+        # capturées dans `e2e.log` et n'atteignent donc pas GitHub. Elles sont
+        # réémises ici pour être lisibles en annotations — notamment les durées de
+        # restauration mesurées, qui alimentent le RTO du rapport de préparation.
+        #
+        # Seuls les niveaux `notice` et `warning` sont réémis : un `error` réémis
+        # depuis un journal produirait une annotation d'échec sur un job vert.
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -f e2e.log ]; then
+            grep -hE '^::(notice|warning) ' e2e.log | sort -u | head -40 || true
+          fi
+
       - name: Publier le journal des tests
         if: always()
         uses: actions/upload-artifact@v4

@@ -176,20 +176,51 @@ tracée (`PROOF_DELETED`), et la preuve disparaît des listes et des télécharg
 
 ### Rétention
 
-- **Aucune purge automatique n'est implémentée.** Le fichier reste sur le disque
-  après suppression logique : la purge physique est une opération d'exploitation
-  explicite, jamais un effet de bord.
-- Durée de conservation recommandée à ce stade : **la durée contractuelle de
-  conservation des pièces justificatives de livraison** (à fixer avec le client
-  pilote). Tant qu'elle n'est pas fixée, aucune purge ne doit être planifiée.
-- Procédure de purge à prévoir avant mise en production : identifier les lignes
-  `deletedAt IS NOT NULL` plus anciennes que la durée retenue, supprimer les
-  fichiers correspondants, conserver la ligne d'audit `PROOF_DELETED`. La
-  suppression doit être **idempotente** (un fichier déjà absent n'est pas une
-  erreur).
-- Un fichier orphelin (présent sur le disque sans ligne en base) est récupérable
-  par une tâche de réconciliation ; il ne doit jamais être servi, la lecture
-  passant toujours par la base.
+**Aucune purge automatique.** Le fichier reste sur le disque après suppression
+logique : la purge physique est une opération d'exploitation explicite, jamais un
+effet de bord, et elle n'est déclenchée par aucune temporisation du code.
+
+**La durée de conservation n'est pas fixée ici, et ce n'est pas un oubli.** C'est
+une décision du client pilote, à instruire avec ses obligations propres. Aucune
+durée légale n'est affirmée dans ce dépôt : les durées applicables dépendent du
+pays, du type de pièce (preuve de livraison, justificatif de paiement) et de la
+relation contractuelle. Les fixer à la place du client reviendrait à prendre une
+décision qu'il n'a pas prise, sur un sujet où une erreur ne se rattrape pas
+(une preuve détruite ne se reconstitue pas). Sont donc **à décider** :
+
+| Décision | Pourquoi elle appartient au client |
+| --- | --- |
+| Durée par nature de preuve | Un justificatif d'encaissement et une photo de livraison n'ont pas le même usage contentieux |
+| Point de départ (date de livraison, de clôture, de dernier paiement) | Détermine ce qui est éligible à la purge |
+| Contre-indications : litige, contrôle en cours, demande d'un client | Exigent un gel de la purge, donc une procédure humaine |
+| Destinataire de l'ordre de purge | La purge est irréversible et doit être imputable à une personne |
+
+**L'outil de purge** (`ops/prune-proofs.mjs`) applique trois garanties :
+
+1. **Aucune durée par défaut** : la date limite est obligatoire (`--before=AAAA-MM-JJ`).
+   Sans elle, le script refuse et n'efface rien.
+2. **Aucune suppression sans `--confirm`** : le mode par défaut décrit ce qui
+   serait supprimé, puis s'arrête.
+3. **Seules les preuves déjà supprimées logiquement** (`deletedAt` non nul) **et**
+   antérieures à la date limite sont effacées. Une preuve active reste, quelle que
+   soit son ancienneté.
+
+Le script **ne touche jamais aux lignes** de `proof_files` : la ligne et son audit
+(`PROOF_DELETED`) survivent, seul le fichier disparaît. Conséquence assumée : un
+téléchargement d'une preuve purgée répond `410 Gone` — c'est le comportement
+attendu après purge, pas une panne. La suppression est idempotente : un fichier
+déjà absent n'est pas une erreur.
+
+Un fichier orphelin (présent sur le disque sans ligne en base) n'est jamais servi :
+la lecture passe toujours par la base. Aucune tâche de réconciliation n'est écrite
+à ce jour ; c'est une lacune connue, sans risque de divulgation.
+
+**Accès et traçabilité.** La consultation d'une preuve passe par l'API, donc par le
+cloisonnement par entreprise et la vérification de permission (§2 et §3) ; chaque
+dépôt et chaque suppression logique est journalisé (§9). La suppression physique,
+elle, s'exécute hors de l'API, avec les droits du système de fichiers : le compte
+qui l'exécute doit donc être distinct du compte applicatif, et l'exécution doit être
+consignée (voir `docs/OPERATIONS-RUNBOOK.md` §6).
 
 ### Sauvegarde
 
@@ -199,10 +230,21 @@ tracée (`PROOF_DELETED`), et la preuve disparaît des listes et des télécharg
 - La sauvegarde doit donc couvrir **les deux** : `pg_dump` de la base **et** copie
   du volume `PROOF_STORAGE_DIR`. Les deux doivent être prises au même moment (ou
   dans un ordre tel qu'aucune preuve référencée ne manque).
-- ✔ Vérifié en CI : `pg_dump --format=custom` puis `pg_restore` dans une base
-  **isolée**, avec contrôle des données, des contraintes, des relations, de la
-  ligne de preuve, de la caisse et de l'audit. La restauration sur données
-  existantes n'est jamais exécutée sans autorisation explicite.
+- L'outillage existe : `ops/backup.mjs` produit les deux artefacts (vidage
+  PostgreSQL + archive du volume), `ops/restore-verify.mjs` les restaure dans une
+  base isolée et vérifie que **chaque preuve référencée en base existe après
+  restauration avec la même empreinte SHA-256**. Le manifeste porte deux
+  empreintes par artefact (octets stockés et contenu en clair), ce qui permet de
+  détecter une altération du support *et* de valider une restitution.
+- ✔ Vérifié en CI sur une base de test : `pg_dump --format=custom` puis
+  `pg_restore` dans une base **isolée**, avec contrôle des données, des
+  contraintes, des relations, de la ligne de preuve, de la caisse et de l'audit.
+- ✘ **Non vérifié en conditions réelles** : aucun environnement d'exploitation
+  n'est provisionné, donc aucune sauvegarde planifiée n'existe à ce jour. Un
+  exercice automatique quotidien tourne en CI sur une base de test ; il prouve que
+  la chaîne fonctionne, **pas** que la production est sauvegardée.
+- La restauration sur données existantes n'est jamais exécutée sans autorisation
+  explicite.
 
 ## 11. Ce qui n'est pas protégé / pas implémenté
 

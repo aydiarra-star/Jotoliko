@@ -152,16 +152,34 @@ Si les outils `pg_dump`/`pg_restore`/`psql` sont absents de l'environnement, la
 suite se **saute explicitement** avec un avertissement — elle n'échoue pas et ne
 fait jamais croire à une vérification qui n'a pas eu lieu.
 
-**Ce qui n'est pas encore fait :** aucune sauvegarde planifiée de production
-n'existe (aucune production), aucune politique de rétention n'est arrêtée, et le
-couple sauvegarde base + volume n'a pas encore été exécuté sur un environnement
-réel. Ces points sont des prérequis de pilote, listés dans le rapport de
-préparation.
+**L'outillage est écrit et exécuté** (`ops/backup.mjs`, `ops/restore-verify.mjs`) :
 
-**Recommandations à arrêter avec l'hébergeur :** sauvegarde quotidienne chiffrée,
-conservation glissante (par exemple 7 quotidiennes + 4 hebdomadaires), stockage
-dans un espace distinct de la production, et **test de restauration périodique** —
-une sauvegarde jamais restaurée n'est pas une sauvegarde.
+- `pg_dump --format=custom --no-owner --no-privileges` puis `tar -czf` du volume
+  `PROOF_STORAGE_DIR`, dans un répertoire horodaté ;
+- chiffrement optionnel `openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000`, la
+  phrase de chiffrement étant passée **par fichier** et jamais en argument de
+  commande ; le fichier de clé doit être en mode `600`, ce que le script vérifie ;
+- manifeste à **deux empreintes par artefact** : `sha256` sur les octets stockés
+  (détecte une altération du support, chiffré ou non) et `contentSha256` sur les
+  octets en clair (valide une restitution) ;
+- relecture de ce qui vient d'être écrit avant de le déclarer valide ;
+- rétention glissante (`BACKUP_KEEP_DAILY` = 7, `BACKUP_KEEP_WEEKLY` = 4) qui ne
+  supprime **jamais** la sauvegarde la plus récente ;
+- `status.json` et pointeur `latest.json`, plus `BACKUP_ALERT_COMMAND` en cas
+  d'échec — et un message explicite « aucune alerte transmise » si aucun
+  destinataire n'est configuré, plutôt qu'une fausse alerte silencieuse.
+
+Le script **refuse de démarrer** si `PROOF_STORAGE_DIR` est absent : une sauvegarde
+partielle silencieuse est plus dangereuse qu'une absence de sauvegarde, parce
+qu'elle donne confiance.
+
+**Ce qui n'est pas encore fait :** aucune sauvegarde planifiée de production
+n'existe — il n'y a ni production ni staging. Un exercice automatique quotidien
+tourne en CI sur une base de test (`.github/workflows/jotoliko-ops.yml`) : il prouve
+que la chaîne fonctionne et mesure les durées de restauration, il **ne** prouve
+**pas** que la production est sauvegardée. Le couple base + volume n'a pas encore
+été exécuté sur un environnement d'exploitation réel. Procédure complète :
+`docs/OPERATIONS-RUNBOOK.md`.
 
 ## 6. Restauration et retour arrière
 
@@ -189,25 +207,54 @@ une sauvegarde jamais restaurée n'est pas une sauvegarde.
   base **et** volume a été vérifiée. Si l'une des deux manque, la seule option est
   une restauration complète, avec la perte des données postérieures à la
   sauvegarde.
-- **Objectifs de reprise (RTO/RPO) : non définis et non mesurés.** Aucune
-  restauration réelle n'a été chronométrée : ne pas annoncer de durée de
-  rétablissement avant de l'avoir mesurée en staging.
+### Objectifs de reprise (RPO / RTO)
+
+**Hypothèses explicites, et ce qu'elles supposent :**
+
+| Objectif | Valeur | Hypothèses |
+| --- | --- | --- |
+| **RPO** | ≤ 24 h | Sauvegarde **quotidienne**. Aucune journalisation continue (*WAL archiving*) n'est en place : le RPO ne peut pas être inférieur à l'intervalle de sauvegarde. Il n'est donc pas de « quelques minutes », et ne doit pas être annoncé comme tel. |
+| **RTO technique** (base + volume) | mesures publiées par l'exercice CI quotidien | Temps de création de la base + `pg_restore` + extraction du volume, sur une base de test. |
+| **RTO réel d'incident** | **non mesuré** | Inclut la détection, la décision humaine d'arrêter les écritures, la bascule et la reprise de service — aucune de ces étapes n'a été chronométrée. |
+
+**Ce que valent les mesures disponibles.** Elles portent sur une base de test de
+quelques mégaoctets, sur le disque local d'un exécuteur de CI, sans concurrence et
+sans les données réelles. Une extrapolation linéaire vers une base de production
+n'est pas légitime : le RTO réel sera supérieur. La première journée du pilote doit
+comprendre un **exercice de restauration sur l'environnement réel**, dont les durées
+remplacent celles publiées par la CI.
+
+**Aucune valeur de RTO n'est annoncée comme contractuelle** : les seules valeurs
+citées sont celles réellement mesurées, et leur portée est précisée à chaque fois
+(annotations `RTO-MESURÉ` de l'exercice `jotoliko-ops.yml`).
 
 ## 7. Supervision et exploitation
 
 - **`GET /health/live`** — vivacité : le processus répond. Ne touche à aucune
   dépendance. C'est la sonde à utiliser pour un redémarrage de conteneur.
-- **`GET /health/ready`** — disponibilité : exécute `SELECT 1`. `200` si la base
-  répond, `503` sinon. C'est la sonde qui doit **retirer l'instance du routage**.
+- **`GET /health/ready`** — disponibilité : vérifie **deux** dépendances
+  indépendantes, la base (`SELECT 1`) et le volume de preuves (écriture témoin
+  réelle + espace libre). `200` avec `status: "ready"` si les deux vont bien,
+  `503` avec `status: "degraded"` sinon, et le détail dans `checks`
+  (`database`, `storage`) plus `storageFreeBytes` / `storageMinFreeBytes`. C'est la
+  sonde qui doit **retirer l'instance du routage** : une instance qui ne peut plus
+  écrire une preuve de livraison ne doit pas accepter de livraison.
+  Seuil : `PROOF_STORAGE_MIN_FREE_BYTES` (défaut 256 Mio).
 - **Journaux** : un identifiant de corrélation est présent sur chaque réponse et
   dans chaque ligne concernée, y compris pour une requête rejetée par l'analyseur
   de corps. Les journaux ne contiennent ni secret, ni jeton, ni contenu de preuve.
 - **Erreurs 5xx** : volontairement muettes côté client ; la cause complète
   (pile d'appels, message du moteur) est dans les journaux serveur, à corréler par
   identifiant de requête. C'est le premier réflexe de diagnostic.
+- **`ops/healthcheck.mjs`** — sonde d'alerting prête à être appelée par un
+  ordonnanceur, avec un contrat par code de sortie : `0` disponible, `1` dégradé
+  (alerter), `2` injoignable (intervenir). Son délai d'attente doit rester
+  supérieur au délai interne de tentative de connexion à la base (10 s), sinon une
+  base lente est classée « injoignable ».
 - **Aucune supervision externe, alerte ou agrégation de journaux n'est
-  configurée.** À prévoir avec l'hébergeur ; les sondes ci-dessus sont le point
-  d'accroche.
+  configurée.** Aucun destinataire d'alerte n'est désigné. À prévoir avec
+  l'hébergeur ; seuils proposés, responsables à désigner et procédure d'incident :
+  `docs/OPERATIONS-RUNBOOK.md` §2 et §7.
 
 ## 8. Déploiement
 

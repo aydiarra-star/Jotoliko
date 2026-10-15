@@ -6,6 +6,7 @@
 // les protections d'authentification.
 
 import { join } from "node:path";
+import { DEFAULT_PROOF_STORAGE_MIN_FREE_BYTES } from "./proofs/proof-storage";
 
 export type AppConfig = {
   port: number;
@@ -34,6 +35,13 @@ export type AppConfig = {
    * chemin local est employé.
    */
   proofStorageDir: string;
+  /**
+   * Seuil d'alerte d'espace libre du volume de preuves, en octets.
+   *
+   * Configurable parce que la bonne valeur dépend de la taille des preuves et du
+   * rythme des livraisons : elle appartient à l'exploitant, pas au code.
+   */
+  proofStorageMinFreeBytes: number;
 };
 
 /** Plage acceptée pour TRUST_PROXY_HOPS : au-delà, la valeur est une erreur. */
@@ -102,7 +110,24 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   }
   const proofStorageDir = rawProofStorageDir || join(process.cwd(), "var", "proofs");
 
-  return { port, databaseUrl, authSecret, corsOrigins, isProduction, trustProxyHops, proofStorageDir };
+  const rawMinFree = env.PROOF_STORAGE_MIN_FREE_BYTES?.trim();
+  const proofStorageMinFreeBytes = rawMinFree ? Number(rawMinFree) : DEFAULT_PROOF_STORAGE_MIN_FREE_BYTES;
+  if (!Number.isInteger(proofStorageMinFreeBytes) || proofStorageMinFreeBytes < 0) {
+    throw new ConfigError(
+      `PROOF_STORAGE_MIN_FREE_BYTES invalide : ${env.PROOF_STORAGE_MIN_FREE_BYTES} (entier d'octets attendu)`
+    );
+  }
+
+  return {
+    port,
+    databaseUrl,
+    authSecret,
+    corsOrigins,
+    isProduction,
+    trustProxyHops,
+    proofStorageDir,
+    proofStorageMinFreeBytes,
+  };
 }
 
 export function describeConfig(config: AppConfig): Record<string, unknown> {
@@ -113,6 +138,7 @@ export function describeConfig(config: AppConfig): Record<string, unknown> {
     isProduction: config.isProduction,
     trustProxyHops: config.trustProxyHops,
     proofStorageDir: config.proofStorageDir,
+    proofStorageMinFreeBytes: config.proofStorageMinFreeBytes,
     authSecret: `[${config.authSecret.length} caractères]`,
   };
 }

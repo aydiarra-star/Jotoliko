@@ -21,8 +21,14 @@ import { loadConfig } from "../config";
     ProofsService,
     {
       provide: ProofStorage,
-      useFactory: () => new ProofStorage(loadConfig().proofStorageDir),
+      useFactory: () => {
+        const config = loadConfig();
+        return new ProofStorage(config.proofStorageDir, config.proofStorageMinFreeBytes);
+      },
     },
   ],
+  // Exporté pour la sonde de disponibilité : l'espace du volume de preuves est
+  // une condition de service, pas un détail d'implémentation.
+  exports: [ProofStorage],
 })
 export class ProofsModule {}

@@ -1,0 +1,190 @@
+name: Jotoliko — exercice d'exploitation
+
+# EXERCICE, pas sauvegarde de production.
+#
+# Ce workflow exécute les scripts d'exploitation (sauvegarde, restauration
+# mesurée, purge) sur une base PostgreSQL **de test**, créée et détruite par le
+# workflow lui-même. Il répond à deux besoins réels :
+#
+#   1. prouver périodiquement que la sauvegarde et la restauration fonctionnent
+#      encore — une chaîne de sauvegarde non testée se découvre cassée le jour de
+#      l'incident ;
+#   2. produire une mesure des durées de restauration, publiée en annotations,
+#      pour alimenter le RTO du rapport de préparation.
+#
+# Ce que ce workflow n'est PAS : une sauvegarde planifiée de la production. Il
+# n'existe aujourd'hui aucun environnement d'exploitation provisionné, donc
+# aucune sauvegarde de production. La planification réelle est décrite dans
+# `docs/OPERATIONS-RUNBOOK.md` §3.5, et le workflow le rappelle à chaque
+# exécution plutôt que de laisser croire l'inverse.
+
+on:
+  schedule:
+    # Chaque nuit, heure creuse. Volontairement décalé des heures rondes : une
+    # exécution à 02:00 pile se retrouve en concurrence avec les autres projets.
+    - cron: "23 2 * * *"
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: jotoliko-ops-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exercice:
+    name: Sauvegarde, restauration mesurée et purge (base de test)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: jotoliko
+          POSTGRES_PASSWORD: jotoliko
+          POSTGRES_DB: jotoliko_exercice
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jotoliko -d jotoliko_exercice"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://jotoliko:jotoliko@localhost:5432/jotoliko_exercice
+      # Le répertoire des preuves et celui des sauvegardes sont deux emplacements
+      # distincts : une sauvegarde écrite dans le volume qu'elle protège ne
+      # protège rien.
+      PROOF_STORAGE_DIR: ${{ github.workspace }}/var/exercice-preuves
+      BACKUP_DIR: ${{ github.workspace }}/var/exercice-sauvegardes
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Dépendances du dépôt (scripts d'exploitation)
+        run: npm ci
+
+      - name: Dépendances de l'API (règle de chemin du stockage)
+        run: npm --prefix apps/api ci
+
+      - name: Génération du client Prisma
+        run: npm --prefix apps/api run prisma:generate
+
+      - name: Build de l'API
+        run: npm --prefix apps/api run build
+
+      - name: Rappel de portée
+        # Publié à chaque exécution : un exercice vert ne doit jamais être lu
+        # comme « la production est sauvegardée ».
+        run: |
+          echo "::notice title=PORTÉE-DE-L-EXERCICE::Exercice sur base de test uniquement. Aucune sauvegarde de production n'existe : voir docs/OPERATIONS-RUNBOOK.md §3.5 et §10."
+
+      - name: Outils clients PostgreSQL
+        # Le répertoire des clients est **résolu**, jamais supposé : la version
+        # installée sur l'exécuteur ne suit pas celle du service. `cron` ne fournit
+        # qu'un `PATH` minimal, d'où la publication de `PG_BIN_DIR` pour les étapes
+        # suivantes.
+        run: |
+          set -euo pipefail
+          if ! command -v pg_dump >/dev/null 2>&1; then
+            PG_DIR=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -1)
+            if [ -z "$PG_DIR" ]; then
+              echo "::error title=CLIENTS-POSTGRESQL::pg_dump est introuvable et aucune installation locale n'a été trouvée"
+              exit 1
+            fi
+            echo "PG_BIN_DIR=$PG_DIR" >> "$GITHUB_ENV"
+            echo "PATH=$PG_DIR:$PATH" >> "$GITHUB_ENV"
+          fi
+          echo "::notice title=CLIENTS-POSTGRESQL::$(pg_dump --version) ; $(psql --version)"
+
+      - name: Schéma et données d'exercice
+        # Les migrations sont appliquées par la **même commande qu'en
+        # déploiement** (`prisma migrate deploy`), puis un jeu minimal est inséré —
+        # dont une preuve dont le fichier existe réellement sur le volume, pour que
+        # la vérification d'empreinte de la restauration ait quelque chose à
+        # confronter.
+        run: |
+          set -euo pipefail
+          npm --prefix apps/api run prisma:migrate:deploy
+
+          ENTREPRISE="11111111-1111-4111-8111-111111111111"
+          MISSION="22222222-2222-4222-8222-222222222222"
+          CLE="$ENTREPRISE/$MISSION"
+
+          mkdir -p "$PROOF_STORAGE_DIR/$CLE"
+          printf 'preuve de livraison — exercice d exploitation' > "$PROOF_STORAGE_DIR/$CLE/preuve.png"
+          EMPREINTE=$(sha256sum "$PROOF_STORAGE_DIR/$CLE/preuve.png" | cut -d' ' -f1)
+          TAILLE=$(stat -c%s "$PROOF_STORAGE_DIR/$CLE/preuve.png")
+
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q \
+            -c "INSERT INTO companies (id, name, slug, \"updatedAt\") VALUES ('$ENTREPRISE', 'Entreprise d exercice', 'exercice', NOW());" \
+            -c "INSERT INTO missions (id, \"companyId\", reference, \"clientName\", status, \"expectedAmount\", \"updatedAt\") VALUES ('$MISSION', '$ENTREPRISE', 'EXERCICE-1', 'Client d exercice', 'LIVREE', 5000, NOW());" \
+            -c "INSERT INTO proof_files (id, \"companyId\", \"missionId\", \"mimeType\", \"sizeBytes\", \"sha256\", \"storageKey\", \"type\") VALUES (gen_random_uuid(), '$ENTREPRISE', '$MISSION', 'image/png', $TAILLE, '$EMPREINTE', '$CLE/preuve.png', 'PHOTO');"
+
+          PREUVES=$(psql "$DATABASE_URL" -tAc 'SELECT count(*) FROM proof_files')
+          echo "::notice title=DONNÉES-D-EXERCICE::$PREUVES preuve(s) référencée(s), fichier présent sur le volume"
+
+      - name: Sauvegarde — pointeur « latest » et rétention, sur deux exécutions
+        run: |
+          set -euo pipefail
+          node ops/backup.mjs
+          node ops/backup.mjs
+          test -f "$BACKUP_DIR/latest.json"
+          echo "::notice title=SAUVEGARDES-PRODUITES::$(ls -d "$BACKUP_DIR"/*/ | wc -l) sauvegarde(s) sur le support, pointeur « latest » à jour"
+
+      - name: Restauration vérifiée et mesurée
+        run: |
+          set -euo pipefail
+          node ops/restore-verify.mjs --report="$BACKUP_DIR/restore-report.json"
+          node -e '
+            const fs = require("node:fs");
+            const r = JSON.parse(fs.readFileSync(process.env.BACKUP_DIR + "/restore-report.json", "utf8"));
+            const b = r.phases.withProofs;
+            console.log(
+              `::notice title=RTO-MESURÉ::base+volume ${b.totalMs} ms (base ${b.databaseRestoreMs} ms, ` +
+              `volume ${b.volumeExtractMs} ms) ; ${b.proofsVerified}/${b.proofsReferenced} preuve(s) ` +
+              `à empreinte conforme ; base seule ${r.phases.databaseOnly.durationMs} ms ; ` +
+              `${r.phases.databaseOnly.missingProofFiles} preuve(s) sans fichier si le volume n est pas restauré`
+            );
+            console.log(
+              `::notice title=PORTÉE-DE-LA-MESURE::durées mesurées sur une base de test de quelques mégaoctets, ` +
+              `disque local d un exécuteur CI, hors concurrence. Le RTO d une infrastructure réelle sera supérieur.`
+            );
+            if (!r.ok) {
+              console.log(`::error title=RESTAURATION-ÉCHEC::${r.problems.join(" | ").slice(0, 850)}`);
+              process.exit(1);
+            }
+          '
+
+      - name: Purge des preuves (simulation puis exécution)
+        # La preuve insérée est active : aucune date limite ne doit la toucher.
+        # Le contrôle vérifie donc que la purge refuse de partir sans date, et
+        # qu'aucun fichier actif ne disparaît.
+        run: |
+          set -euo pipefail
+          if node ops/prune-proofs.mjs --confirm; then
+            echo "::error title=PURGE-SANS-DATE::la purge a accepté de s'exécuter sans date limite"
+            exit 1
+          fi
+          node ops/prune-proofs.mjs --before=2030-01-01 --confirm
+          test -f "$PROOF_STORAGE_DIR/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/preuve.png"
+          echo "::notice title=PURGE::refus sans date limite, et preuve active intacte après purge"
+
+      - name: Publier le rapport d'exercice
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapport-exercice-exploitation
+          path: |
+            ${{ env.BACKUP_DIR }}/restore-report.json
+            ${{ env.BACKUP_DIR }}/status.json
+            ${{ env.BACKUP_DIR }}/**/manifest.json
+          if-no-files-found: ignore
+          retention-days: 30

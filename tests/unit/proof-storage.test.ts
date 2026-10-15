@@ -12,7 +12,7 @@
 // Ce test ne demande ni PostgreSQL, ni API compilée : il s'exécute partout, y
 // compris dans un environnement sans base de données.
 
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -169,6 +169,65 @@ describe("Stockage des preuves — écriture et lecture", () => {
     const missing = ProofStorage.keyFor(COMPANY_ID, MISSION_ID, "b".repeat(64), "image/png");
     expect(await storage.size(missing)).toBeNull();
     expect(await storage.open(missing)).toBeNull();
+  });
+});
+
+describe("Stockage des preuves — diagnostic du volume (supervision)", () => {
+  it("déclare le volume utilisable et publie l'espace libre", async () => {
+    const health = await storage.health();
+    expect(health.usable).toBe(true);
+    expect(health.reason).toBeNull();
+    // L'espace libre est une valeur réelle du système de fichiers, pas une
+    // constante : c'est ce qui permet d'alerter avant la saturation.
+    expect(typeof health.freeBytes).toBe("number");
+    expect(health.freeBytes).toBeGreaterThan(0);
+    expect(health.minFreeBytes).toBeGreaterThan(0);
+  });
+
+  it("ne laisse aucun fichier témoin derrière lui", async () => {
+    await storage.health();
+    const entries = readdirSync(root);
+    expect(entries.filter((name) => name.startsWith(".sante-"))).toEqual([]);
+  });
+
+  it("se déclare inutilisable quand le chemin n'est pas un répertoire", async () => {
+    // Cas déterministe, sans dépendre des droits du processus : un volume monté
+    // au mauvais endroit (fichier au lieu de répertoire) doit être signalé.
+    const notADirectory = join(root, "fichier-au-lieu-de-volume");
+    writeFileSync(notADirectory, "je ne suis pas un répertoire");
+    const broken = new ProofStorage(notADirectory);
+    const health = await broken.health();
+    expect(health.usable).toBe(false);
+    expect(["INDISPONIBLE", "NON_INSCRIPTIBLE"]).toContain(health.reason);
+  });
+
+  it("alerte quand l'espace libre passe sous le seuil configuré", async () => {
+    // Seuil volontairement inatteignable : l'espace libre réel est toujours
+    // inférieur au plus grand entier sûr, donc le cas se reproduit partout.
+    const exigent = new ProofStorage(root, Number.MAX_SAFE_INTEGER);
+    const health = await exigent.health();
+    expect(health.usable).toBe(false);
+    expect(health.reason).toBe("ESPACE_INSUFFISANT");
+    expect(health.minFreeBytes).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  it("refuse un volume réellement non inscriptible", async () => {
+    // Le contrôle écrit vraiment : un test de droit d'accès ne détecte ni un
+    // montage en lecture seule, ni un disque plein.
+    if (process.getuid?.() === 0) {
+      console.warn("[proof-storage] root : le refus d'écriture ne peut pas être éprouvé, cas ignoré");
+      return;
+    }
+    const closed = mkdtempSync(join(tmpdir(), "jotoliko-proofs-ferme-"));
+    chmodSync(closed, 0o500);
+    try {
+      const health = await new ProofStorage(closed).health();
+      expect(health.usable).toBe(false);
+      expect(["NON_INSCRIPTIBLE", "INDISPONIBLE"]).toContain(health.reason);
+    } finally {
+      chmodSync(closed, 0o700);
+      rmSync(closed, { recursive: true, force: true });
+    }
   });
 });
 
