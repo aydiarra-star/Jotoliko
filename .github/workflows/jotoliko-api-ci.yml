@@ -197,4 +197,28 @@ jobs:
       - name: Tests HTTP de bout en bout
         # Aucun test n'est ignoré ici : les suites qui exigent une base échouent
         # si DATABASE_URL est absent (voir tests/api-e2e/harness.ts).
-        run: npm run test:e2e:api
+        id: e2e
+        run: |
+          set +e
+          npx vitest run --config vitest.e2e.config.ts \
+            --reporter=default --reporter=json --outputFile=e2e-report.json > e2e.log 2>&1
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            # Les échecs sont republiés en annotations : elles restent lisibles
+            # via l'API des check-runs même quand les journaux du runner ne sont
+            # pas téléchargeables depuis l'environnement appelant.
+            node scripts/emit-vitest-annotations.mjs e2e-report.json e2e.log
+          fi
+          exit "$code"
+
+      - name: Publier le journal des tests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-e2e-logs
+          path: |
+            e2e.log
+            e2e-report.json
+          if-no-files-found: ignore
+          retention-days: 7
