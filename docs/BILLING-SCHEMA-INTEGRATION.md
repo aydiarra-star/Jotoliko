@@ -15,7 +15,21 @@ Constats vérifiés sur la branche de référence `arena/dd76021f-jotoliko` :
 - `AppModule` importe actuellement Auth, Missions, Proofs et Prisma ; aucun module Billing n'est encore enregistré.
 - Les scripts Prisma de l'API pointent vers `../../prisma/schema.prisma`.
 
-## Modèles à ajouter (proposition, pas encore une migration)
+## Historique des migrations vérifié
+
+La branche de référence contient trois migrations SQL versionnées :
+
+- `20261015000000_init_operational_core`
+- `20261015120000_mvp_catalogue_and_delivery`
+- `20261015180000_proof_delivery_storage`
+
+Le fichier `migration_lock.toml` confirme PostgreSQL. La migration d'abonnement a été ajoutée ensuite sous `20261015200000_monthly_self_service_billing`, sans modifier les trois migrations existantes. Elle ajoute uniquement les enums et tables de facturation dédiées.
+
+## Modèles et migration ajoutés dans cette PR
+
+Le schéma canonique et une migration SQL additive proposent désormais les modèles ci-dessous. Ils ne sont pas encore déployés dans une base et doivent passer la validation Prisma et une revue SQL avant toute application.
+
+
 
 Les noms et champs ci-dessous sont une cible d'implémentation ; ils ne doivent pas être considérés comme déjà présents en base.
 
@@ -46,14 +60,14 @@ Les noms et champs ci-dessous sont une cible d'implémentation ; ils ne doivent 
 
 ## Ordre d'implémentation sécurisé
 
-1. Décider et documenter la règle de comptage : un siège = un `Driver.isActive` par entreprise. Le dépassement doit être refusé côté API, dans une transaction, y compris en cas de requêtes concurrentes.
-2. Approuver le tarif en FCFA par livreur/mois et sa version. Aucun prix illustratif ne doit devenir un tarif réel implicitement.
-3. Ajouter les modèles et les relations dans le schéma canonique, puis créer une migration SQL explicite. Ne pas exécuter `migrate deploy` sur un environnement partagé dans cette étape.
-4. Valider le schéma, générer Prisma Client et tester la migration sur une base locale jetable ; vérifier également que le dépôt utilise bien des migrations versionnées et que la migration est compatible avec son historique réel.
+1. Valider le schéma Prisma et exécuter les tests automatisés de la logique pure ; leur résultat doit être confirmé par CI.
+2. Générer Prisma Client et tester la migration sur une base locale jetable ; ne pas exécuter `migrate deploy` sur un environnement partagé.
+3. Décider et documenter la règle de comptage : un siège = un `Driver.isActive` par entreprise. Le dépassement doit être refusé côté API, dans une transaction, y compris en cas de requêtes concurrentes.
+4. Approuver le tarif en FCFA par livreur/mois et sa version. Aucun prix illustratif ne doit devenir un tarif réel implicitement.
 5. Ajouter le module Billing NestJS et l'inscription transactionnelle. L'activation crée l'entreprise, le propriétaire et l'appartenance `OWNER` dans une transaction uniquement après confirmation vérifiée du paiement.
 6. Ajouter la vérification fournisseur côté serveur, l'idempotence des callbacks, le rapprochement montant/devise/référence, puis les tests d'échec, de doublon et de callbacks désordonnés.
 7. Brancher les gardes d'accès sur l'état d'abonnement sans supprimer les données à l'expiration. Tester l'isolation entre entreprises et le cas où plusieurs requêtes tentent de dépasser la limite en même temps.
 
 ## Statut
 
-Audit du schéma effectué ; aucune modification de schéma ou migration de base n'est incluse dans cette étape. Aucun tarif, compte marchand, paiement, déploiement ou merge n'a été créé. Ce document prépare l'intégration mais ne prétend pas que l'inscription ou la facturation sont déjà fonctionnelles.
+Audit de l'historique effectué et migration SQL additive ajoutée à la PR. Le schéma et la migration ne sont pas encore validés par Prisma/CI ni appliqués à une base. Aucun tarif, compte marchand, paiement, déploiement ou merge n'a été créé. L'inscription autonome et la facturation ne sont pas encore fonctionnelles.
