@@ -65,12 +65,19 @@ export function assertDriverCapacity({ activeDriverCount, requestedActiveCount, 
  * autorisent les fonctions payantes. Le calcul de l'état et les dates doivent
  * venir de la base serveur, jamais du client.
  */
-export function hasPaidAccess({ status, gracePeriodEndsAt, now = new Date() }) {
-  if (status === "ACTIVE") return true;
+export function hasPaidAccess({ status, currentPeriodEnd, gracePeriodEndsAt, now = new Date() }) {
+  // ACTIVE ne suffit pas : la période payée doit encore être valide.
+  if (status === "ACTIVE") {
+    if (!currentPeriodEnd) return false;
+    const periodEnd = new Date(currentPeriodEnd);
+    return !Number.isNaN(periodEnd.getTime()) && periodEnd.getTime() > now.getTime();
+  }
+
+  // La grâce est elle aussi strictement bornée par sa date de fin.
   if (status !== "GRACE_PERIOD" || !gracePeriodEndsAt) return false;
   const deadline = new Date(gracePeriodEndsAt);
   if (Number.isNaN(deadline.getTime())) return false;
-  return now.getTime() <= deadline.getTime();
+  return deadline.getTime() > now.getTime();
 }
 
 /** Un webhook ne peut être traité comme payé que si le prestataire l'a confirmé. */
