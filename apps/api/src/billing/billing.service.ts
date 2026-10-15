@@ -33,10 +33,7 @@ export class BillingService {
       billingPeriod: "MONTH",
       currency: "XOF",
       seatRange: { minimum: 1, maximum: 500 },
-      prices: prices.map((price) => ({
-        ...price,
-        amountForSeats: (seatCount: number) => price.unitPriceXof * seatCount,
-      })).map(({ amountForSeats: _amountForSeats, ...price }) => price),
+      prices,
       message: prices.length > 0 ? undefined : "PRICE_NOT_CONFIGURED",
     };
   }
