@@ -5,10 +5,16 @@ name: Deploy site to GitHub Pages
 # site publié pouvait rester figé sur une version ancienne. Il est restauré ici.
 
 on:
-  push:
+  pull_request:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publier sur GitHub Pages après validation complète"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -61,6 +67,7 @@ jobs:
           test -f out/index.html
 
       - name: Publication sur la branche gh-pages
+        if: github.event_name == 'workflow_dispatch' && inputs.publish == true
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
