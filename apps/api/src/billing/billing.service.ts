@@ -438,7 +438,7 @@ export class BillingService {
   /** Expose only explicitly configured, currently effective prices. */
   async listPublicPrices(now = new Date()) {
     const prices = await this.prisma.planPrice.findMany({
-      where: { isActive: true, effectiveFrom: { lte: now }, OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }] },
+      where: { isActive: true, currency: "XOF", effectiveFrom: { lte: now }, OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }] },
       orderBy: [{ unitPriceXof: "asc" }, { version: "desc" }],
       select: { id: true, code: true, version: true, currency: true, unitPriceXof: true, effectiveFrom: true, effectiveUntil: true },
     });
