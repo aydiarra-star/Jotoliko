@@ -91,6 +91,10 @@ export class BillingService {
       throw new ServiceUnavailableException({ code: "PRICE_NOT_CONFIGURED", message: "Le tarif choisi n'est plus actif. Aucun paiement n'a été lancé." });
     }
 
+    const callbackUrl = requiredHttpsUrl("PAYDUNYA_CALLBACK_URL");
+    const returnUrl = requiredHttpsUrl("PAYDUNYA_RETURN_URL");
+    const cancelUrl = requiredHttpsUrl("PAYDUNYA_CANCEL_URL");
+
     let existing = await this.prisma.billingPayment.findFirst({
       where: { signupAttemptId: attempt.id, provider: PROVIDER },
       orderBy: { createdAt: "desc" },
@@ -160,9 +164,6 @@ export class BillingService {
       });
     }
 
-    const callbackUrl = requiredHttpsUrl("PAYDUNYA_CALLBACK_URL");
-    const returnUrl = requiredHttpsUrl("PAYDUNYA_RETURN_URL");
-    const cancelUrl = requiredHttpsUrl("PAYDUNYA_CANCEL_URL");
     let invoice: { token: string; checkoutUrl: string };
     try {
       invoice = await this.paydunya.createInvoice({
