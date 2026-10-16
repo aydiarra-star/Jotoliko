@@ -220,7 +220,7 @@ export class BillingService {
       throw new UnprocessableEntityException("Facture inconnue.");
     }
     if (payment.status === "CONFIRMED" && payment.signupAttempt.status === "ACTIVE") {
-      return { received: true, status: "ACTIVE", idempotent: true };
+      return { received: true, status: "ACTIVE", idempotent: true, companySlug: payment.signupAttempt.companySlug };
     }
 
     const verified = await this.paydunya.confirmInvoice(invoiceToken);
@@ -341,6 +341,7 @@ export class BillingService {
         status: "ACTIVE",
         idempotent: false,
         companyId: company.id,
+        companySlug: attempt.companySlug,
         subscriptionId: subscription.id,
         currentPeriodEnd: periodEnd,
       };
