@@ -189,10 +189,27 @@ export class BillingService {
       throw error;
     }
 
-    await this.prisma.billingPayment.update({
-      where: { id: paymentId },
-      data: { providerReference: invoice.token, checkoutUrl: invoice.checkoutUrl },
-    });
+    try {
+      await this.prisma.billingPayment.update({
+        where: { id: paymentId },
+        data: { providerReference: invoice.token, checkoutUrl: invoice.checkoutUrl },
+      });
+    } catch {
+      // Never return an invoice URL until its token and amount are durably linked
+      // to the signup attempt. If persistence failed, keep the link private and
+      // release the reservation for a controlled retry.
+      try {
+        await this.prisma.billingPayment.updateMany({
+          where: { id: paymentId, status: "PENDING", providerReference: null },
+          data: { status: "FAILED" },
+        });
+      } catch {
+        // A DB outage can also prevent cleanup. The client still receives no URL.
+      }
+      throw new ServiceUnavailableException(
+        "La facture a été créée mais son enregistrement n'a pas pu être confirmé. Aucun lien n'a été communiqué ; réessayez avant tout nouveau paiement.",
+      );
+    }
 
     return {
       signupAttemptId: attempt.id,
