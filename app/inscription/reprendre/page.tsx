@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ArrowLeft, ArrowRight, Clock3, LoaderCircle, ShieldCheck } from "lucide-react";
 
-const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\\/+$/, "");
+const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/+$/, "");
 
 type ResumeResult = {
   signupAttemptId: string;
