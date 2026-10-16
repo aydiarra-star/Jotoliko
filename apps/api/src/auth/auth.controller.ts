@@ -32,7 +32,7 @@ export class AuthController {
   @Patch("signup/:id")
   @HttpCode(200)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  updateSignup(@Param("id") id: string, @Body() body: UpdateSignupDto & ResumeSignupDto) {
+  updateSignup(@Param("id") id: string, @Body() body: UpdateSignupDto) {
     return this.signup.updatePending(id, body.resumeToken, body);
   }
 
