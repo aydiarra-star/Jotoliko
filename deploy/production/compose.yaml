@@ -51,6 +51,14 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:?Set CORS_ORIGIN in .env.production}
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
       PROOF_STORAGE_DIR: /var/lib/jotoliko/proofs
+      PAYDUNYA_MODE: ${PAYDUNYA_MODE:-sandbox}
+      PAYDUNYA_ALLOW_LIVE: ${PAYDUNYA_ALLOW_LIVE:-false}
+      PAYDUNYA_MASTER_KEY: ${PAYDUNYA_MASTER_KEY:-}
+      PAYDUNYA_PRIVATE_KEY: ${PAYDUNYA_PRIVATE_KEY:-}
+      PAYDUNYA_TOKEN: ${PAYDUNYA_TOKEN:-}
+      PAYDUNYA_CALLBACK_URL: ${PAYDUNYA_CALLBACK_URL:-}
+      PAYDUNYA_RETURN_URL: ${PAYDUNYA_RETURN_URL:-}
+      PAYDUNYA_CANCEL_URL: ${PAYDUNYA_CANCEL_URL:-}
     volumes:
       - ${PROOF_STORAGE_HOST_PATH:-/srv/jotoliko/proofs}:/var/lib/jotoliko/proofs
     expose:

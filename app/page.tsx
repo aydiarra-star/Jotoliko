@@ -46,11 +46,11 @@ export default function HomePage() {
             </Reveal>
             <Reveal delay={0.18}>
               <div className="mt-9 flex flex-wrap gap-3">
-                <Link href="/demo" className="btn-primary">
-                  Demander une démo <ArrowRight className="h-4 w-4" />
+                <Link href="/inscription" className="btn-primary">
+                  Créer un compte professionnel <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link href="/tarifs" className="btn-ghost">
-                  Commencer gratuitement
+                  Voir les tarifs
                 </Link>
               </div>
             </Reveal>

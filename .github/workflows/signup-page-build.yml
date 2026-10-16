@@ -1,0 +1,63 @@
+name: Jotoliko self-service signup page build
+
+on:
+  push:
+    branches:
+      - feat/self-service-signup-foundation
+    paths:
+      - "app/**"
+      - "components/**"
+      - "lib/**"
+      - "next.config.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".env.example"
+      - ".github/workflows/signup-page-build.yml"
+  pull_request:
+    branches:
+      - feat/monthly-self-service-subscriptions
+      - main
+    paths:
+      - "app/**"
+      - "components/**"
+      - "lib/**"
+      - "next.config.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".env.example"
+      - ".github/workflows/signup-page-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signup-page-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-site:
+    name: Build and validate static site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install site dependencies
+        run: npm ci
+      # Next's project-wide type validation follows a shared auth service from
+      # existing frontend imports, so its NestJS and generated Prisma types must
+      # be available even though API checks run in a separate workflow.
+      - name: Install API dependencies
+        run: npm ci --prefix apps/api
+      - name: Generate Prisma client
+        run: npm run api:prisma:generate
+      - name: Build static site
+        run: npm run build
+        env:
+          NEXT_PUBLIC_BASE_PATH: /Jotoliko
+          NEXT_PUBLIC_SITE_URL: https://aydiarra-star.github.io/Jotoliko
+          # No live API URL is supplied in CI. Signup must remain safely disabled.
+          NEXT_PUBLIC_API_BASE_URL: ""

@@ -900,6 +900,9 @@ model SignupAttempt {
   ownerLastName String
   passwordHash  String
   passwordSalt  String
+  /// SHA-256 du jeton de reprise transmis une seule fois au client.
+  /// Le jeton brut n'est jamais stocké en base.
+  resumeTokenHash String? @unique
   seatCount     Int
   planPriceId   String
   status        SignupAttemptStatus @default(PENDING_PAYMENT)
@@ -922,6 +925,7 @@ model BillingPayment {
   subscriptionId    String?
   provider          String
   providerReference String?
+  checkoutUrl       String?
   amountXof         Int
   currency          String               @default("XOF")
   status            BillingPaymentStatus @default(PENDING)

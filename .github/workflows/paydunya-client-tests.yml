@@ -1,0 +1,64 @@
+name: Jotoliko PayDunya client tests
+
+on:
+  push:
+    branches:
+      - "feat/self-service-signup-foundation"
+    paths:
+      - "apps/api/src/billing/**"
+      - "apps/api/src/auth/signup.service.ts"
+      - "apps/api/src/main.ts"
+      - "tests/paydunya-client.test.ts"
+      - "tests/billing-checkout.test.ts"
+      - "tests/signup-service.test.ts"
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**"
+      - "package.json"
+      - "package-lock.json"
+      - "apps/api/package.json"
+      - "apps/api/package-lock.json"
+      - ".github/workflows/paydunya-client-tests.yml"
+  pull_request:
+    paths:
+      - "apps/api/src/billing/paydunya.client.ts"
+      - "tests/paydunya-client.test.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "apps/api/package.json"
+      - "apps/api/package-lock.json"
+      - ".github/workflows/paydunya-client-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paydunya-client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/jotoliko_ci?schema=public
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/api/package-lock.json
+      - name: Install root test dependencies
+        run: npm ci
+      - name: Install API dependencies
+        run: npm ci --prefix apps/api
+      - name: Generate Prisma Client
+        run: npm run api:prisma:generate
+      - name: Run PayDunya client tests
+        run: npm test -- tests/paydunya-client.test.ts tests/billing-checkout.test.ts
+      - name: Typecheck and build API
+        working-directory: apps/api
+        run: |
+          npm run typecheck
+          npm run build
