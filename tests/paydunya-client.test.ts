@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PayDunyaClient } from "../apps/api/src/billing/paydunya.client";
+import { createHash } from "node:crypto";
 
 describe("PayDunyaClient", () => {
   const client = new PayDunyaClient();
@@ -89,7 +90,9 @@ describe("PayDunyaClient", () => {
   it("confirms invoice status using the server API and returns verified amount", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       response_code: "00",
-      invoice: { status: "completed", total_amount: "15000", currency: "XOF" },
+      hash: createHash("sha512").update("sandbox-master-key", "utf8").digest("hex"),
+      status: "completed",
+      invoice: { total_amount: "15000" },
       custom_data: { signup_reference: "signup-123" },
     }), { status: 200, headers: { "Content-Type": "application/json" } }));
     vi.stubGlobal("fetch", fetchMock);
@@ -105,6 +108,18 @@ describe("PayDunyaClient", () => {
       currency: "XOF",
       reference: "signup-123",
     });
+  });
+
+  it("rejects a confirmation response with an invalid PayDunya hash", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      response_code: "00",
+      hash: "0".repeat(128),
+      status: "completed",
+      invoice: { total_amount: "15000" },
+      custom_data: { signup_reference: "signup-123" },
+    }), { status: 200, headers: { "Content-Type": "application/json" } })));
+
+    await expect(client.confirmInvoice("test_123456")).rejects.toThrow(/signature de confirmation/);
   });
 
   it("does not allow live mode without an explicit second opt-in", async () => {
