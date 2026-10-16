@@ -188,17 +188,6 @@ export class SignupService {
         message: "Cette inscription n'est plus modifiable.",
       });
     }
-    if (attempt.expiresAt <= now) {
-      await this.prisma.signupAttempt.updateMany({
-        where: { id: attempt.id, status: "PENDING_PAYMENT", expiresAt: { lte: now } },
-        data: { status: "EXPIRED" },
-      });
-      throw new ConflictException({
-        code: "SIGNUP_EXPIRED",
-        message: "Cette inscription a expiré. Recommencez le parcours.",
-      });
-    }
-
     const pendingPayment = await this.prisma.billingPayment.findFirst({
       where: { signupAttemptId: attempt.id, status: "PENDING" },
       select: { id: true },
@@ -207,6 +196,17 @@ export class SignupService {
       throw new ConflictException({
         code: "SIGNUP_CHECKOUT_ALREADY_STARTED",
         message: "Une facture est déjà en attente. La configuration est verrouillée pour éviter un écart entre le montant payé et les places activées.",
+      });
+    }
+
+    if (attempt.expiresAt <= now) {
+      await this.prisma.signupAttempt.updateMany({
+        where: { id: attempt.id, status: "PENDING_PAYMENT", expiresAt: { lte: now } },
+        data: { status: "EXPIRED" },
+      });
+      throw new ConflictException({
+        code: "SIGNUP_EXPIRED",
+        message: "Cette inscription a expiré. Recommencez le parcours.",
       });
     }
 
@@ -310,7 +310,13 @@ export class SignupService {
       });
     }
 
-    if (attempt.status === "PENDING_PAYMENT" && attempt.expiresAt <= new Date()) {
+    const pendingPayment = attempt.status === "PENDING_PAYMENT"
+      ? await this.prisma.billingPayment.findFirst({
+          where: { signupAttemptId: attempt.id, status: "PENDING" },
+          select: { id: true },
+        })
+      : null;
+    if (attempt.status === "PENDING_PAYMENT" && attempt.expiresAt <= new Date() && !pendingPayment) {
       await this.prisma.signupAttempt.update({
         where: { id: attempt.id },
         data: { status: "EXPIRED" },
