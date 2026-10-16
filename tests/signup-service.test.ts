@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { ServiceUnavailableException } from "@nestjs/common";
 import { SignupService } from "../apps/api/src/auth/signup.service";
 import type { PrismaService } from "../apps/api/src/prisma.service";
 
@@ -36,7 +35,10 @@ describe("SignupService", () => {
     const { service, prisma } = makeService();
     prisma.planPrice.findFirst.mockResolvedValue(null);
 
-    await expect(service.create(validInput)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(service.create(validInput)).rejects.toMatchObject({
+      status: 503,
+      response: { code: "PRICE_NOT_CONFIGURED" },
+    });
     expect(prisma.signupAttempt.create).not.toHaveBeenCalled();
   });
 
@@ -84,6 +86,7 @@ describe("SignupService", () => {
     });
     expect(prisma.signupAttempt.create).not.toHaveBeenCalled();
   });
+
   it("reprend une tentative uniquement avec le jeton secret correspondant", async () => {
     const { service, prisma } = makeService();
     prisma.signupAttempt.findFirst.mockResolvedValue(null);
@@ -91,7 +94,7 @@ describe("SignupService", () => {
     await expect(service.resume("attempt-uuid", "a".repeat(64))).rejects.toMatchObject({
       response: { code: "SIGNUP_RESUME_INVALID" },
     });
-    expect(prisma.signupAttempt.update).toBeUndefined();
+    expect(prisma.signupAttempt.update).not.toHaveBeenCalled();
   });
 
   it("renvoie l'état et le tarif lors d'une reprise autorisée", async () => {
@@ -120,5 +123,4 @@ describe("SignupService", () => {
     expect(result.pricing.monthlyAmountXof).toBe(15000);
     expect(result.nextStep).toBe("PAYMENT_PROVIDER_NOT_CONFIGURED");
   });
-
 });
