@@ -248,12 +248,19 @@ export class BillingService {
       .digest("hex");
 
     return this.prisma.$transaction(async (tx) => {
+      // Once a hosted invoice was reserved while the signup was valid, a slow
+      // provider callback must not leave a customer charged but unactivated.
+      // Expiry blocks new checkouts; it does not invalidate an invoice created
+      // before that expiry. Attempts whose invoice was created too late remain
+      // subject to the normal expiry guard.
+      const invoiceStartedBeforeExpiry =
+        payment.createdAt instanceof Date &&
+        payment.createdAt <= payment.signupAttempt!.expiresAt;
       const claimed = await tx.signupAttempt.updateMany({
         where: {
           id: payment.signupAttemptId!,
           status: "PENDING_PAYMENT",
-          // A late provider callback must never activate an expired signup.
-          expiresAt: { gt: now },
+          ...(!invoiceStartedBeforeExpiry ? { expiresAt: { gt: now } } : {}),
         },
         data: { status: "ACTIVE" },
       });
