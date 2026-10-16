@@ -32,6 +32,8 @@ type SignupResult = {
   message: string;
 };
 
+type CheckoutResult = { checkoutUrl: string; status: string; amountXof: number; currency: string; provider: string; message: string };
+
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/+$/, "");
 
 function formatXof(amount: number) {
@@ -46,6 +48,8 @@ export default function SignupPage() {
   const [error, setError] = useState("");
   const [result, setResult] = useState<SignupResult | null>(null);
   const [copied, setCopied] = useState(false);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
   const [seatCount, setSeatCount] = useState(1);
   const [planCode, setPlanCode] = useState("");
 
@@ -131,6 +135,32 @@ export default function SignupPage() {
     }
   }
 
+  async function startCheckout() {
+    if (!result || !apiBase) return;
+    setCheckoutBusy(true);
+    setCheckoutError("");
+    try {
+      const response = await fetch(`${apiBase}/billing/signup/${encodeURIComponent(result.signupAttemptId)}/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ resumeToken: result.resumeToken }),
+      });
+      const data = await response.json().catch(() => ({})) as Partial<CheckoutResult> & { message?: string | string[] };
+      if (!response.ok || typeof data.checkoutUrl !== "string") {
+        const message = Array.isArray(data.message) ? data.message.join(" ") : data.message;
+        throw new Error(message || "Le paiement n'est pas disponible pour le moment. Votre demande reste enregistrée.");
+      }
+      const url = new URL(data.checkoutUrl);
+      if (url.protocol !== "https:" || url.hostname !== "app.paydunya.com") {
+        throw new Error("L'adresse de paiement reçue n'est pas reconnue. Aucun paiement n'a été ouvert.");
+      }
+      window.location.assign(url.toString());
+    } catch (e) {
+      setCheckoutError(e instanceof Error ? e.message : "Erreur réseau. Réessayez.");
+    } finally {
+      setCheckoutBusy(false);
+    }
+  }
   async function copyResumeToken() {
     if (!result?.resumeToken) return;
     try {
@@ -159,7 +189,7 @@ export default function SignupPage() {
         {result ? (
           <div className="card mt-8 p-6 sm:p-8">
             <span className="grid h-12 w-12 place-items-center rounded-full bg-success-soft text-success"><CheckCircle2 className="h-6 w-6" /></span>
-            <h2 className="mt-5 text-xl font-semibold">Inscription enregistrée, paiement à configurer</h2>
+            <h2 className="mt-5 text-xl font-semibold">Demande professionnelle enregistrée</h2>
             <p className="mt-2 text-sm leading-relaxed text-ink-500">{result.message}</p>
             <dl className="mt-6 grid gap-3 rounded-xl bg-slate-50 p-4 text-sm">
               <div className="flex justify-between gap-4"><dt className="text-ink-500">Référence</dt><dd className="font-mono font-medium">{result.signupAttemptId}</dd></div>
@@ -175,8 +205,13 @@ export default function SignupPage() {
                 <Copy className="h-4 w-4" /> {copied ? "Jeton copié" : "Copier le jeton"}
               </button>
             </div>
-            <p className="mt-5 text-sm text-ink-500">
-              Les paiements ne sont pas encore activés sur ce site. Aucun moyen de paiement n'est présenté comme disponible et aucun compte opérationnel n'a été activé.
+            {checkoutError ? <p role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{checkoutError}</p> : null}
+            <button type="button" onClick={() => void startCheckout()} disabled={checkoutBusy || !apiBase} className="btn-primary mt-5 w-full disabled:cursor-not-allowed disabled:opacity-50">
+              {checkoutBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+              {checkoutBusy ? "Préparation du paiement…" : "Continuer vers le paiement sécurisé"}
+            </button>
+            <p className="mt-3 text-sm text-ink-500">
+              Si PayDunya n'est pas configuré sur le serveur, le parcours s'arrête sans débiter ni activer de compte. Le paiement mensuel ne signifie pas encore un prélèvement automatique de renouvellement.
             </p>
           </div>
         ) : (
