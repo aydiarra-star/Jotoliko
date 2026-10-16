@@ -77,3 +77,46 @@ test("le paiement doit correspondre au montant, à la devise et à la référenc
   assert.equal(matchesExpectedCheckout({ ...expected, event: { ...event, providerStatus: "pending" } }), false);
   assert.equal(matchesExpectedCheckout({ ...expected, event: { ...event, amountXof: "12500" } }), false);
 });
+
+ 
+test("clé d'idempotence du renouvellement stable et distincte par période", async () => {
+  const { buildRenewalIdempotencyKey } = await import("./billing-core.mjs");
+  const first = buildRenewalIdempotencyKey({
+    subscriptionId: "sub_123",
+    periodStart: "2026-10-01T00:00:00.000Z",
+    periodEnd: "2026-11-01T00:00:00.000Z",
+  });
+  assert.equal(first, buildRenewalIdempotencyKey({
+    subscriptionId: "sub_123",
+    periodStart: "2026-10-01T00:00:00.000Z",
+    periodEnd: "2026-11-01T00:00:00.000Z",
+  }));
+  assert.notEqual(first, buildRenewalIdempotencyKey({
+    subscriptionId: "sub_123",
+    periodStart: "2026-11-01T00:00:00.000Z",
+    periodEnd: "2026-12-01T00:00:00.000Z",
+  }));
+  assert.throws(() => buildRenewalIdempotencyKey({ subscriptionId: " ", periodStart: "2026-10-01", periodEnd: "2026-11-01" }), /subscriptionId/);
+  assert.throws(() => buildRenewalIdempotencyKey({ subscriptionId: "sub_123", periodStart: "invalid", periodEnd: "2026-11-01" }), /période/);
+  assert.throws(() => buildRenewalIdempotencyKey({ subscriptionId: "sub_123", periodStart: "2026-11-01", periodEnd: "2026-10-01" }), /période/);
+});
+
+test("renouvellement refuse les débits automatiques sans preuve complète", async () => {
+  const { decideRenewalAction } = await import("./billing-core.mjs");
+  const due = {
+    status: "ACTIVE",
+    currentPeriodEnd: "2026-10-01T00:00:00.000Z",
+    now: "2026-10-16T00:00:00.000Z",
+  };
+  assert.equal(decideRenewalAction(due), "CREATE_HOSTED_CHECKOUT");
+  assert.equal(decideRenewalAction({ ...due, providerRecurrenceConfirmed: true }), "CREATE_HOSTED_CHECKOUT");
+  assert.equal(decideRenewalAction({ ...due, providerRecurrenceConfirmed: true, customerConsentRecorded: true }), "CREATE_HOSTED_CHECKOUT");
+  assert.equal(decideRenewalAction({ ...due, providerRecurrenceConfirmed: true, customerConsentRecorded: true, providerIdempotencySupported: true }), "ATTEMPT_RECURRING_CHARGE");
+  assert.equal(decideRenewalAction({ ...due, attemptStatus: "UNKNOWN", providerRecurrenceConfirmed: true, customerConsentRecorded: true, providerIdempotencySupported: true }), "RECONCILE_EXISTING_ATTEMPT");
+  assert.equal(decideRenewalAction({ ...due, attemptStatus: "CONFIRMED" }), "PERIOD_ALREADY_PAID");
+  assert.equal(decideRenewalAction({ ...due, currentPeriodEnd: "2026-11-01T00:00:00.000Z" }), "NOT_DUE");
+  assert.equal(decideRenewalAction({ ...due, cancelAtPeriodEnd: true }), "SKIP");
+  assert.equal(decideRenewalAction({ ...due, status: "CANCELLED" }), "SKIP");
+  assert.equal(decideRenewalAction({ ...due, status: "PENDING_PAYMENT" }), "MANUAL_REVIEW");
+  assert.equal(decideRenewalAction({ ...due, currentPeriodEnd: null }), "MANUAL_REVIEW");
+});
