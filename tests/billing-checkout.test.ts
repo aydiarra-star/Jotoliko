@@ -136,6 +136,42 @@ describe("BillingService — PayDunya checkout safety", () => {
     await expect(service.createSignupCheckout("attempt-1", "a".repeat(64))).rejects.toThrow(/sandbox est interdit en production/);
     expect(paydunya.createInvoice).not.toHaveBeenCalled();
   });
+  it("creates a new invoice only after PayDunya confirms the previous invoice is terminally failed", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("PAYDUNYA_CALLBACK_URL", "https://api.example.com/billing/paydunya/callback");
+    vi.stubEnv("PAYDUNYA_RETURN_URL", "https://example.com/inscription/retour");
+    vi.stubEnv("PAYDUNYA_CANCEL_URL", "https://example.com/inscription/annulee");
+    const { service, prisma, paydunya } = makeService();
+    prisma.billingPayment.findFirst.mockResolvedValue({
+      id: "payment-previous",
+      status: "FAILED",
+      checkoutUrl: "https://app.paydunya.com/sandbox-checkout/invoice/old_invoice",
+      amountXof: 15000,
+      providerReference: "old_invoice",
+    });
+    paydunya.confirmInvoice.mockResolvedValue({
+      status: "failed",
+      amountXof: 15000,
+      currency: "XOF",
+      reference: "attempt-1",
+    });
+
+    const result = await service.createSignupCheckout("attempt-1", "a".repeat(64));
+
+    expect(paydunya.confirmInvoice).toHaveBeenCalledWith("old_invoice");
+    expect(prisma.billingPayment.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        idempotencyKey: "paydunya-signup-attempt-1-retry-payment-previous",
+        status: "PENDING",
+      }),
+    }));
+    expect(prisma.billingPayment.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "payment-1" },
+      data: expect.objectContaining({ providerReference: "test_invoice_12345" }),
+    }));
+    expect(result).toMatchObject({ status: "PENDING_PAYMENT", amountXof: 15000 });
+  });
+
   it("does not reuse an uncertain failed invoice or risk a later double charge", async () => {
     vi.stubEnv("NODE_ENV", "test");
     vi.stubEnv("PAYDUNYA_CALLBACK_URL", "https://api.example.com/billing/paydunya/callback");
