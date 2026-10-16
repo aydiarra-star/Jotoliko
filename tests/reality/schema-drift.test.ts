@@ -148,9 +148,10 @@ afterAll(async () => {
 
 describe("Anti-dérive schéma Prisma ⇄ migrations", () => {
   it("déclare au moins un modèle (le test ne doit pas passer à vide)", () => {
-    // Ce nombre est volontairement figé : l'ajout d'un modèle doit être un
-    // geste conscient, accompagné de sa migration et de sa table attendue.
-    expect(models.length).toBe(26);
+    // Ce nombre est volontairement figé : l'ajout de modèles doit rester
+    // conscient et accompagné de migrations. Le socle de facturation et
+    // d'inscription professionnelle porte désormais le schéma à 30 modèles.
+    expect(models.length).toBe(30);
     expect(enums.size).toBe(10);
   });
 
