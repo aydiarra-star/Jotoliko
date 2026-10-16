@@ -202,7 +202,7 @@ export class SignupService {
     const seatCount = input.seatCount ?? attempt.seatCount;
     const companyName = input.companyName === undefined
       ? attempt.companyName
-      : input.companyName.trim().replace(/\\s+/g, " ");
+      : input.companyName.trim().replace(/\s+/g, " ");
     const planCode = input.planCode?.trim() ?? attempt.planPrice.code;
     if (!companyName) {
       throw new UnprocessableEntityException({
