@@ -373,8 +373,8 @@ export const scenarios = [
 export const pricing = [
   {
     name: "Starter",
-    price: "15 000",
-    unit: "FCFA / mois",
+    price: "À configurer",
+    unit: "tarif mensuel serveur",
     tagline: "Pour se lancer et digitaliser ses premières livraisons.",
     features: [
       "Jusqu'à 3 utilisateurs",
@@ -389,8 +389,8 @@ export const pricing = [
   },
   {
     name: "Business",
-    price: "39 000",
-    unit: "FCFA / mois",
+    price: "À configurer",
+    unit: "tarif mensuel serveur",
     tagline: "Pour les entreprises qui livrent tous les jours.",
     features: [
       "Jusqu'à 15 utilisateurs",
@@ -406,8 +406,8 @@ export const pricing = [
   },
   {
     name: "Entreprise",
-    price: "Sur devis",
-    unit: "tarification dédiée",
+    price: "À configurer",
+    unit: "tarif mensuel serveur",
     tagline: "Pour les opérations multi-sites et les gros volumes.",
     features: [
       "Utilisateurs illimités",
