@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ServiceUnavailableException } from "@nestjs/common";
 import { PayDunyaClient } from "../apps/api/src/billing/paydunya.client";
 
 describe("PayDunyaClient", () => {
@@ -64,7 +63,7 @@ describe("PayDunyaClient", () => {
       returnUrl: "https://example.com/return",
       cancelUrl: "https://example.com/cancel",
       reference: "signup-123",
-    })).rejects.toBeInstanceOf(ServiceUnavailableException);
+    })).rejects.toThrow(/Montant de facture invalide/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
