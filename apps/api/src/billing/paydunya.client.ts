@@ -1,4 +1,5 @@
 import { Injectable, ServiceUnavailableException } from "@nestjs/common";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 type PayDunyaMode = "sandbox" | "live";
 type PayDunyaInvoiceCreated = {
@@ -160,20 +161,39 @@ export class PayDunyaClient {
     if (!data || data.response_code !== "00" || !invoice) {
       throw new ServiceUnavailableException("PayDunya n'a pas confirmé l'état de la facture.");
     }
-    const rawStatus = typeof invoice.status === "string" ? invoice.status.toLowerCase() : "";
+
+    // PayDunya documents the SHA-512 hash of the merchant MasterKey in the
+    // confirmation response. Reject malformed or mismatched provider responses.
+    const suppliedHash = typeof data.hash === "string" ? data.hash : "";
+    const expectedHash = createHash("sha512").update(config.masterKey, "utf8").digest("hex");
+    const suppliedBytes = Buffer.from(suppliedHash, "hex");
+    const expectedBytes = Buffer.from(expectedHash, "hex");
+    if (
+      !/^[a-f0-9]{128}$/i.test(suppliedHash) ||
+      suppliedBytes.length !== expectedBytes.length ||
+      !timingSafeEqual(suppliedBytes, expectedBytes)
+    ) {
+      throw new ServiceUnavailableException("La signature de confirmation PayDunya est invalide.");
+    }
+
+    // The documented API places status at the response root and total_amount
+    // under invoice. Currency is not present in every documented response;
+    // the stored invoice was created by this server in XOF.
+    const rawStatus = typeof data.status === "string"
+      ? data.status.toLowerCase()
+      : typeof invoice.status === "string" ? invoice.status.toLowerCase() : "";
     const status: PayDunyaInvoiceStatus =
       rawStatus === "completed" || rawStatus === "pending" ||
       rawStatus === "cancelled" || rawStatus === "failed"
         ? rawStatus
         : "unknown";
     const amount = Number(invoice.total_amount);
+    const customData = asObject(data.custom_data);
     return {
       status,
       amountXof: Number.isSafeInteger(amount) && amount >= 0 ? amount : null,
       currency: typeof invoice.currency === "string" ? invoice.currency : null,
-      reference: typeof asObject(data.custom_data)?.signup_reference === "string"
-        ? asObject(data.custom_data)?.signup_reference as string
-        : null,
+      reference: typeof customData?.signup_reference === "string" ? customData.signup_reference : null,
     };
   }
 }
