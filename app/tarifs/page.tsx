@@ -55,10 +55,10 @@ export default function PricingPage() {
                   ))}
                 </ul>
                 <Link
-                  href={plan.highlight ? "/demo" : "/contact"}
+                  href="/inscription"
                   className={plan.highlight ? "btn-primary mt-8 w-full" : "btn-ghost mt-8 w-full"}
                 >
-                  {plan.cta}
+                  Créer un compte professionnel
                 </Link>
               </div>
             </Reveal>
@@ -90,8 +90,8 @@ export default function PricingPage() {
       <CTA
         title="Commencez gratuitement, passez à l'échelle ensuite."
         body="Créez votre espace en quelques minutes. Notre équipe vous aide à importer vos clients et vos premières commandes."
-        primary={{ href: "/contact", label: "Créer mon espace" }}
-        secondary={{ href: "/demo", label: "Demander une démo" }}
+        primary={{ href: "/inscription", label: "Créer un compte professionnel" }}
+        secondary={{ href: "/contact", label: "Une question ? Contactez-nous" }}
       />
     </>
   );
