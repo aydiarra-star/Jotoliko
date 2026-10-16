@@ -31,7 +31,7 @@ Le parcours doit distinguer une tentative d'inscription persistante du compte op
 
 - `POST /auth/signup` : créer une tentative et renvoyer l'identifiant, l'état, le tarif serveur et le jeton de reprise (une seule fois).
 - `POST /auth/signup/:id/resume` : retourner l'état et le devis serveur uniquement si le jeton de reprise fourni correspond à l'empreinte persistée.
-- `PATCH /auth/signup/:id` : modifier la configuration tant que la tentative n'est pas consommée ; cette route reste à implémenter.
+- `PATCH /auth/signup/:id` : modifier le nom de société, l'offre et/ou le nombre de places d'une tentative en attente, uniquement avec le jeton secret ; le prix est recalculé côté serveur et aucune session de paiement n'est créée.
 - `POST /billing/checkout` : recalculer le montant sur le serveur et créer une session chez un fournisseur configuré. En absence de fournisseur ou de tarif, répondre explicitement « non configuré ».
 - `POST /billing/webhooks/:provider` : vérifier la signature et le statut auprès du fournisseur, puis traiter l'événement de manière idempotente.
 - L'activation doit être centralisée dans un service serveur commun ; aucun contrôleur ne doit activer un abonnement en se basant sur un paramètre client ou une URL de retour.
@@ -62,6 +62,6 @@ Le parcours doit distinguer une tentative d'inscription persistante du compte op
 
 ## Critères de sortie de cette étape
 
-La fondation d'inscription et de reprise est partiellement présente : schéma, migration additive, DTO, service, contrôleurs et tests ont été ajoutés. Elle ne sera considérée validée qu'après vérification du typecheck, de l'exécution des tests et revue de sécurité. Le checkout, le webhook et l'activation atomique restent à implémenter.
+La fondation d'inscription, de reprise et de modification est partiellement présente : schéma, migration additive, DTO, service, contrôleurs et tests ont été ajoutés. La modification reste réservée aux tentatives `PENDING_PAYMENT` non expirées et exige le jeton de reprise. Elle ne sera considérée validée qu'après vérification du typecheck, de l'exécution des tests et revue de sécurité. Le checkout, le webhook et l'activation atomique restent à implémenter.
 
 Aucun merge, déploiement, changement de tarif ou paiement réel n'est autorisé par cette étape.
