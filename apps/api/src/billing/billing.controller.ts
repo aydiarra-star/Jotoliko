@@ -42,10 +42,16 @@ export class BillingController {
   @Post("paydunya/callback")
   @HttpCode(200)
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  paydunyaCallback(@Body() body: Record<string, unknown>) {
-    const data = body.data && typeof body.data === "object" ? body.data as Record<string, unknown> : undefined;
-    const invoice = data?.invoice && typeof data.invoice === "object" ? data.invoice as Record<string, unknown> : undefined;
-    const token = body.token ?? data?.token ?? invoice?.token ?? body["data[invoice][token]"] ?? body["data[token]"];
+  paydunyaCallback(@Body() body: Record<string, unknown> | null) {
+    // A malformed/empty callback is a client error, not an unhandled 500.
+    const payload = body && typeof body === "object" && !Array.isArray(body) ? body : {};
+    const data = payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)
+      ? payload.data as Record<string, unknown>
+      : undefined;
+    const invoice = data?.invoice && typeof data.invoice === "object" && !Array.isArray(data.invoice)
+      ? data.invoice as Record<string, unknown>
+      : undefined;
+    const token = payload.token ?? data?.token ?? invoice?.token ?? payload["data[invoice][token]"] ?? payload["data[token]"];
     if (typeof token !== "string" || !/^[a-zA-Z0-9_-]{4,200}$/.test(token)) {
       throw new BadRequestException("Jeton de facture PayDunya manquant ou invalide.");
     }
