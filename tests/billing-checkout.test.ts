@@ -22,7 +22,7 @@ function makeService() {
   };
   const prisma = {
     signupAttempt: { findFirst: vi.fn().mockResolvedValue(attempt), updateMany: vi.fn() },
-    planPrice: { findFirst: vi.fn().mockResolvedValue({ id: "price-1", code: "PRO", version: 1, currency: "XOF", unitPriceXof: 5000 }) },
+    planPrice: { findFirst: vi.fn().mockResolvedValue({ id: "price-1", code: "PRO", version: 1, currency: "XOF", unitPriceXof: 5000 }), findMany: vi.fn().mockResolvedValue([]) },
     billingPayment: {
       findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: "payment-1" }),
@@ -270,5 +270,16 @@ describe("BillingService — PayDunya checkout safety", () => {
 
     expect(paydunya.createInvoice).not.toHaveBeenCalled();
     expect(prisma.billingPayment.create).not.toHaveBeenCalled();
+  });
+  
+  it("lists only XOF prices in the public catalogue", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    const { service, prisma } = makeService();
+
+    await service.listPublicPrices();
+
+    expect(prisma.planPrice.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ currency: "XOF", isActive: true }),
+    }));
   });
 });
