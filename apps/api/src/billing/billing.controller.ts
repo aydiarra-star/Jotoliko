@@ -1,8 +1,10 @@
-import { Controller, Get, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { AuthGuard } from "../auth/auth.guard";
 import type { AuthenticatedRequest } from "../auth/auth.types";
 import { BillingService } from "./billing.service";
+import { CreateSignupCheckoutDto } from "./dto/create-signup-checkout.dto";
+import { PayDunyaCallbackDto } from "./dto/paydunya-callback.dto";
 
 @Controller("billing")
 export class BillingController {
@@ -20,6 +22,28 @@ export class BillingController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   quote(@Query("seats") seats?: string) {
     return this.billing.quoteMonthly(seats ?? "");
+  }
+
+  /**
+   * Starts a hosted checkout only for the owner of a valid, secret-protected
+   * signup attempt. All price/customer values are taken from server records.
+   */
+  @Post("signup/:id/checkout")
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  createSignupCheckout(@Param("id") id: string, @Body() body: CreateSignupCheckoutDto) {
+    return this.billing.createSignupCheckout(id, body.resumeToken);
+  }
+
+  /**
+   * PayDunya callback. Its token is only a lookup hint; BillingService calls
+   * PayDunya's server API and checks the exact invoice before activation.
+   */
+  @Post("paydunya/callback")
+  @HttpCode(200)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  paydunyaCallback(@Body() body: PayDunyaCallbackDto) {
+    return this.billing.processPayDunyaCallback(body.token);
   }
 
   /** Authenticated company-scoped subscription summary; never accepts companyId from the client. */
