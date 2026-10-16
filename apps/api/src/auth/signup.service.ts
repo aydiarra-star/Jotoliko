@@ -199,6 +199,17 @@ export class SignupService {
       });
     }
 
+    const pendingPayment = await this.prisma.billingPayment.findFirst({
+      where: { signupAttemptId: attempt.id, status: "PENDING" },
+      select: { id: true },
+    });
+    if (pendingPayment) {
+      throw new ConflictException({
+        code: "SIGNUP_CHECKOUT_ALREADY_STARTED",
+        message: "Une facture est déjà en attente. La configuration est verrouillée pour éviter un écart entre le montant payé et les places activées.",
+      });
+    }
+
     const seatCount = input.seatCount ?? attempt.seatCount;
     const companyName = input.companyName === undefined
       ? attempt.companyName
