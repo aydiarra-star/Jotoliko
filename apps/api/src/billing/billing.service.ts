@@ -119,30 +119,21 @@ export class BillingService {
       });
     }
 
-    // Reserve the one checkout slot BEFORE calling the provider. A deterministic
-    // unique idempotency key prevents concurrent requests creating two invoices.
-    let paymentId: string;
+    // Never reuse a failed payment row. A timeout can happen after the provider
+    // created an invoice, and overwriting its token could make a later valid
+    // payment impossible to reconcile. A new signup attempt is required unless
+    // a provider-specific reconciliation workflow proves the old invoice terminal.
     if (existing?.status === "FAILED") {
-      const reservation = await this.prisma.billingPayment.updateMany({
-        where: { id: existing.id, status: "FAILED" },
-        data: {
-          status: "PENDING",
-          amountXof,
-          currency: "XOF",
-          providerReference: null,
-          checkoutUrl: null,
-          rawEventHash: null,
-          paidAt: null,
-        },
+      throw new ConflictException({
+        code: "CHECKOUT_NOT_RETRYABLE",
+        message: "Cette tentative de paiement a échoué ou son résultat est incertain. Pour éviter un double débit, ne réutilisez pas cette facture ; vérifiez son état auprès du support avant de recommencer.",
       });
-      if (reservation.count !== 1) {
-        throw new ConflictException({
-          code: "CHECKOUT_CREATION_IN_PROGRESS",
-          message: "Une autre requête prépare déjà la facture. Réessayez dans quelques secondes.",
-        });
-      }
-      paymentId = existing.id;
-    } else if (!existing) {
+    }
+
+    // Reserve one checkout slot before calling the provider. If two requests
+    // race, the unique signup-attempt idempotency key allows only one reservation.
+    let paymentId: string;
+    if (!existing) {
       try {
         const reservation = await this.prisma.billingPayment.create({
           data: {
