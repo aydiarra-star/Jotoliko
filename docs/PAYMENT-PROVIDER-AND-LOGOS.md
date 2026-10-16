@@ -14,7 +14,7 @@ Références officielles consultées le 16 octobre 2026 :
 - https://developers.paydunya.com/doc/FR/softpay
 - https://developers.paydunya.com/doc/FR/NodeJS
 
-Cette évaluation n'affirme pas que Jotoliko possède déjà un compte marchand PayDunya, que les méthodes sont activées pour ce compte ou que le paiement récurrent est pris en charge.
+Cette intégration technique en branche ne signifie pas que Jotoliko possède déjà un compte marchand PayDunya, que les méthodes sont activées pour ce compte, ni que le paiement récurrent est pris en charge. Aucun secret marchand n'est enregistré dans le dépôt.
 
 ## Règles d'affichage des logos
 
@@ -29,15 +29,22 @@ Cette évaluation n'affirme pas que Jotoliko possède déjà un compte marchand 
 
 La documentation consultée confirme des flux de paiement et de vérification de facture, mais ne suffit pas à garantir le débit automatique récurrent pour tous les moyens sénégalais. Jusqu'à confirmation contractuelle et technique, le produit doit parler de **paiement mensuel**, et non de prélèvement automatique. Un renouvellement manuel avec rappel est acceptable comme première version.
 
-## Conditions avant l'activation
+## Parcours implémenté dans la branche
 
-- Compte marchand approuvé et clés stockées uniquement dans les secrets du serveur.
-- Mode sandbox configuré et tests de bout en bout réalisés.
-- Création de facture côté serveur à partir du tarif actif, du montant et de la devise recalculés.
-- Vérification serveur du statut final auprès de l'API du fournisseur.
-- Traitement idempotent des notifications et des retours.
-- Activation atomique de l'entreprise, du propriétaire, de l'abonnement et de la capacité après paiement confirmé seulement.
-- Tests de paiement en attente, annulé, échoué, notification répétée et montant/devise incohérents.
-- Affichage des logos officiels uniquement pour les méthodes activées.
+- `POST /billing/signup/:id/checkout` vérifie l'identifiant et le jeton secret de reprise, l'expiration, le tarif XOF actif et calcule le montant depuis les données serveur.
+- Le checkout hébergé n'est accessible que via une URL HTTPS sur `app.paydunya.com`. L'URL et le jeton de facture sont conservés dans `BillingPayment` pour permettre de reprendre une facture en attente.
+- `POST /billing/paydunya/callback` traite le jeton reçu comme un simple indice : l'API vérifie ensuite la facture directement auprès de PayDunya.
+- L'activation compare le statut `completed`, le montant exact, la devise `XOF` et la référence d'inscription. La création de l'entreprise, du propriétaire, de son rôle, de l'abonnement actif et la confirmation du paiement se font dans une transaction unique.
+- Les notifications répétées sont idempotentes lorsque le paiement et l'inscription sont déjà actifs. Une incohérence ou un état expiré ne déclenche pas de création partielle.
 
-Aucune clé, transaction réelle, méthode active, tarif commercial ou activation de compte n'est créé par ce document.
+## Configuration et limites avant toute mise en service
+
+1. Configurer `PAYDUNYA_MODE=sandbox`, `PAYDUNYA_MASTER_KEY`, `PAYDUNYA_PRIVATE_KEY`, `PAYDUNYA_TOKEN` et les trois URLs HTTPS `PAYDUNYA_CALLBACK_URL`, `PAYDUNYA_RETURN_URL`, `PAYDUNYA_CANCEL_URL` dans l'environnement serveur seulement. Le callback doit viser `/billing/paydunya/callback`.
+2. Exécuter la migration additive `20261016070000_billing_checkout_url` dans un environnement de test jetable, puis générer le client Prisma et exécuter les tests.
+3. Tester avec un compte marchand sandbox : succès, attente, annulation, échec, callback répété, montant incorrect, devise incorrecte, référence incorrecte, jeton inconnu, inscription expirée et e-mail déjà utilisé.
+4. Vérifier qu'un rôle `OWNER` est présent dans les données de référence avant de tester l'activation. Si ce rôle manque, la transaction d'activation est annulée.
+5. Ne passer en mode réel qu'après validation des tests, compte marchand approuvé et configuration des secrets côté hébergeur. Le mode réel exige `PAYDUNYA_ALLOW_LIVE=true` en plus de `PAYDUNYA_MODE=live`.
+6. Le premier paiement ouvre une période d'un mois. **Le renouvellement automatique n'est pas implémenté** : ne pas annoncer un prélèvement récurrent sans capacité contractuelle et technique confirmée.
+7. Les logos restent ceux du checkout PayDunya hébergé. Ne montrer aucune méthode comme disponible sur le site Jotoliko sans preuve qu'elle est active sur le compte marchand.
+
+L'intégration dans cette branche ne configure pas de compte marchand, ne fournit pas de secrets, ne fixe aucun tarif, ne déclenche aucune transaction réelle et ne déploie ni ne fusionne le code.
