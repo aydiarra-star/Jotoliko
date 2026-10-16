@@ -57,6 +57,12 @@ Les trois URL PayDunya doivent être publiques et en HTTPS. En production, le mo
 9. Vérifier le login du propriétaire créé et l'isolation multi-tenant après activation.
 10. Vérifier les parcours d'échec et de reprise sur téléphone.
 
+## Gestion d'une création de facture au résultat incertain
+
+Si la requête de création PayDunya expire ou si la base de données ne parvient pas à enregistrer le jeton après la création de la facture, l'API ne communique pas de lien de paiement et bloque toute nouvelle facture automatique tant que l'état précédent ne peut pas être rapproché. Cette protection évite qu'une requête répétée ne provoque un double paiement, mais elle peut nécessiter une vérification exceptionnelle dans le tableau de bord marchand PayDunya.
+
+Avant l'ouverture commerciale, prévoir une procédure d'exploitation : retrouver la facture côté PayDunya à partir de l'heure, du montant et des informations de référence disponibles ; confirmer son état ; ne jamais supprimer ou réinitialiser la ligne de paiement pour forcer une nouvelle tentative ; ne reprendre le parcours qu'après rapprochement documenté. Ne jamais demander au client d'envoyer ses clés API ou ses informations bancaires. Cette procédure exceptionnelle ne remplace pas le parcours automatique nominal.
+
 ## Limites explicites
 
 - Aucun compte marchand PayDunya ni secret réel n'est configuré dans le dépôt. Le fonctionnement réel du paiement n'est donc pas encore validé de bout en bout.
