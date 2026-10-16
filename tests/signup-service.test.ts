@@ -6,6 +6,7 @@ function makeService() {
   const prisma = {
     planPrice: { findFirst: vi.fn() },
     user: { findUnique: vi.fn().mockResolvedValue(null) },
+    billingPayment: { findFirst: vi.fn().mockResolvedValue(null) },
     signupAttempt: {
       findFirst: vi.fn().mockResolvedValue(null),
       update: vi.fn(),
@@ -135,6 +136,29 @@ describe("SignupService", () => {
     }));
     expect(result.pricing.monthlyAmountXof).toBe(20000);
     expect(result.nextStep).toBe("PAYMENT_PROVIDER_NOT_CONFIGURED");
+  });
+
+  it("verrouille les paramètres dès qu'une facture est en attente", async () => {
+    const { service, prisma } = makeService();
+    const token = "b".repeat(64);
+    prisma.signupAttempt.findFirst.mockResolvedValue({
+      id: "attempt-uuid",
+      status: "PENDING_PAYMENT",
+      expiresAt: new Date(Date.now() + 60_000),
+      companyName: "Atelier Diarra",
+      seatCount: 3,
+      planPriceId: "price-id",
+      planPrice: { id: "price-id", code: "PRO", version: 1, currency: "XOF", unitPriceXof: 5000 },
+    } as never);
+    prisma.billingPayment.findFirst.mockResolvedValue({ id: "payment-id" });
+
+    await expect(service.updatePending("attempt-uuid", token, {
+      seatCount: 4,
+      resumeToken: token,
+    })).rejects.toMatchObject({
+      response: { code: "SIGNUP_CHECKOUT_ALREADY_STARTED" },
+    });
+    expect(prisma.signupAttempt.update).not.toHaveBeenCalled();
   });
 
   it("ne modifie pas une inscription si le jeton est invalide", async () => {
