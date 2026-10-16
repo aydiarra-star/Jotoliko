@@ -282,4 +282,23 @@ describe("BillingService — PayDunya checkout safety", () => {
       where: expect.objectContaining({ currency: "XOF", isActive: true }),
     }));
   });
+  
+  it("does not create a checkout for a zero or negative server price", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    const { service, prisma, paydunya } = makeService();
+
+    prisma.planPrice.findFirst.mockResolvedValue({
+      id: "price-1",
+      code: "PRO",
+      version: 1,
+      currency: "XOF",
+      unitPriceXof: 0,
+    });
+
+    await expect(service.createSignupCheckout("attempt-1", "a".repeat(64)))
+      .rejects.toMatchObject({ response: expect.objectContaining({ code: "PRICE_NOT_CONFIGURED" }) });
+
+    expect(prisma.billingPayment.create).not.toHaveBeenCalled();
+    expect(paydunya.createInvoice).not.toHaveBeenCalled();
+  });
 });
