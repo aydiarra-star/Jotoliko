@@ -229,29 +229,34 @@ export class SignupService {
       });
     }
 
-    const data: Prisma.SignupAttemptUpdateManyMutationInput = {
+    const data: Prisma.SignupAttemptUpdateInput = {
       companyName,
       seatCount,
-      planPriceId: price.id,
+      planPrice: { connect: { id: price.id } },
     };
     if (input.companyName !== undefined) {
       data.companySlug = `${slugifyCompanyName(companyName)}-${randomUUID().slice(0, 8)}`;
     }
 
-    const changed = await this.prisma.signupAttempt.updateMany({
-      where: {
-        id: attempt.id,
-        resumeTokenHash: tokenHash,
-        status: "PENDING_PAYMENT",
-        expiresAt: { gt: now },
-      },
-      data,
-    });
-    if (changed.count !== 1) {
-      throw new ConflictException({
-        code: "SIGNUP_NOT_EDITABLE",
-        message: "Cette inscription a changé d'état. Rechargez son état avant de continuer.",
+    try {
+      // Le filtre d’état et d’expiration empêche d’écraser un changement concurrent.
+      await this.prisma.signupAttempt.update({
+        where: {
+          id: attempt.id,
+          resumeTokenHash: tokenHash,
+          status: "PENDING_PAYMENT",
+          expiresAt: { gt: now },
+        },
+        data,
       });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+        throw new ConflictException({
+          code: "SIGNUP_NOT_EDITABLE",
+          message: "Cette inscription a changé d’état. Rechargez son état avant de continuer.",
+        });
+      }
+      throw error;
     }
 
     return {
