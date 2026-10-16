@@ -128,6 +128,23 @@ describe("PayDunya signup activation", () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it("activates a valid invoice created before signup expiry even if the callback arrives late", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    const { service, tx, attempt } = setup({
+      createdAt: new Date(Date.now() - 120_000),
+    });
+    attempt.expiresAt = new Date(Date.now() - 60_000);
+
+    await expect(service.processPayDunyaCallback("invoice_1234")).resolves.toMatchObject({
+      status: "ACTIVE",
+      companyId: "company-1",
+    });
+    const claim = tx.signupAttempt.updateMany.mock.calls[0][0];
+    expect(claim.where).not.toHaveProperty("expiresAt");
+    expect(tx.company.create).toHaveBeenCalledOnce();
+    expect(tx.user.create).toHaveBeenCalledOnce();
+  });
+
   it("refuses late activation when the signup has expired", async () => {
     vi.stubEnv("NODE_ENV", "test");
     const { service, tx, attempt } = setup();
