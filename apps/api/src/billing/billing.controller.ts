@@ -44,7 +44,7 @@ export class BillingController {
   paydunyaCallback(@Body() body: Record<string, unknown>) {
     const data = body.data && typeof body.data === "object" ? body.data as Record<string, unknown> : undefined;
     const invoice = data?.invoice && typeof data.invoice === "object" ? data.invoice as Record<string, unknown> : undefined;
-    const token = body.token ?? data?.token ?? invoice?.token;
+    const token = body.token ?? data?.token ?? invoice?.token ?? body["data[invoice][token]"] ?? body["data[token]"];
     if (typeof token !== "string" || !/^[a-zA-Z0-9_-]{4,200}$/.test(token)) {
       throw new BadRequestException("Jeton de facture PayDunya manquant ou invalide.");
     }
