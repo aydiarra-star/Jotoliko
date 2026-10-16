@@ -252,6 +252,8 @@ export class BillingService {
         where: {
           id: payment.signupAttemptId!,
           status: "PENDING_PAYMENT",
+          // A late provider callback must never activate an expired signup.
+          expiresAt: { gt: now },
         },
         data: { status: "ACTIVE" },
       });
