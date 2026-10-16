@@ -28,6 +28,15 @@ function requiredHttpsUrl(name: string): string {
   return parsed.toString();
 }
 
+function assertPaymentEnvironmentAllowed(): void {
+  // Sandbox invoices must never activate real production tenants.
+  if (process.env.NODE_ENV === "production" && (process.env.PAYDUNYA_MODE?.trim() || "sandbox") !== "live") {
+    throw new ServiceUnavailableException(
+      "Le paiement sandbox est interdit en production. Configurez PayDunya live après validation du compte marchand.",
+    );
+  }
+}
+
 function addCalendarMonth(from: Date): Date {
   const result = new Date(from);
   const day = result.getDate();
@@ -50,6 +59,7 @@ export class BillingService {
    * The client cannot choose the amount, currency, customer, or provider URL.
    */
   async createSignupCheckout(signupAttemptId: string, resumeToken: string) {
+    assertPaymentEnvironmentAllowed();
     const now = new Date();
     const attempt = await this.prisma.signupAttempt.findFirst({
       where: { id: signupAttemptId, resumeTokenHash: hashToken(resumeToken) },
@@ -151,6 +161,7 @@ export class BillingService {
    * activate all account records in one transaction. Repeated callbacks are safe.
    */
   async processPayDunyaCallback(invoiceToken: string) {
+    assertPaymentEnvironmentAllowed();
     const payment = await this.prisma.billingPayment.findFirst({
       where: { provider: PROVIDER, providerReference: invoiceToken },
       include: { signupAttempt: true },
