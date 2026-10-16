@@ -86,8 +86,8 @@ export function Navbar() {
           <Link href="/contact" className="btn-ghost">
             Contact
           </Link>
-          <Link href="/demo" className="btn-primary">
-            Demander une démo
+          <Link href="/inscription" className="btn-primary">
+            Créer un compte professionnel
           </Link>
         </div>
 
@@ -126,7 +126,7 @@ export function Navbar() {
                   Contact
                 </Link>
                 <Link href="/demo" className="btn-primary w-full">
-                  Demander une démo
+                  Créer un compte professionnel
                 </Link>
               </div>
             </div>
