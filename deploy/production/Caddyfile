@@ -1,0 +1,12 @@
+# Set API_DOMAIN to a real DNS name before starting the stack.
+# Caddy obtains and renews HTTPS certificates automatically for a public domain.
+{$API_DOMAIN} {
+  encode zstd gzip
+  reverse_proxy api:4000
+
+  header {
+    -Server
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "no-referrer"
+  }
+}

@@ -1,0 +1,57 @@
+name: Jotoliko self-service signup tests
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/auth/**"
+      - "apps/api/src/prisma.service.ts"
+      - "apps/api/package.json"
+      - "apps/api/package-lock.json"
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**"
+      - "tests/signup-service.test.ts"
+      - "tests/billing-signup-activation.test.ts"
+      - "apps/api/src/billing/**"
+      - ".github/workflows/signup-service-tests.yml"
+  push:
+    branches:
+      - "feat/self-service-signup-foundation"
+    paths:
+      - "apps/api/src/auth/**"
+      - "apps/api/src/prisma.service.ts"
+      - "apps/api/package.json"
+      - "apps/api/package-lock.json"
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**"
+      - "tests/signup-service.test.ts"
+      - ".github/workflows/signup-service-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signup-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/jotoliko_ci?schema=public
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/api/package-lock.json
+      - name: Install root test dependencies
+        run: npm ci
+      - name: Install API dependencies
+        run: npm ci --prefix apps/api
+      - name: Generate Prisma Client
+        run: npm run prisma:generate --prefix apps/api
+      - name: Run self-service signup tests
+        run: npm test -- tests/signup-service.test.ts tests/billing-signup-activation.test.ts

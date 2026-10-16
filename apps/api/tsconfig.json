@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": false,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "target": "ES2023",
+    "sourceMap": true,
+    "outDir": "./dist",
+    // Les invariants métier vivent dans lib/jotoliko-os/ à la racine du dépôt.
+    // Placer rootDir deux niveaux au-dessus permet de compiler l'API et le
+    // module partagé ensemble, sans dupliquer la logique métier.
+    "rootDir": "../..",
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src/**/*.ts", "../../lib/jotoliko-os/**/*.ts"],
+  // Les fichiers de test du module partagé ne doivent pas être compilés dans
+  // dist : ils ne servent qu'en développement.
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "../../lib/**/*.test.ts"]
+}

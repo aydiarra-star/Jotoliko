@@ -12,10 +12,18 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
     "incremental": true,
     "plugins": [{ "name": "next" }],
     "paths": { "@/*": ["./*"] }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "out"]
+  "exclude": [
+    "node_modules",
+    "out",
+    "apps",
+    ".next",
+    "dist"
+  ]
 }

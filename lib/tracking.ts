@@ -14,9 +14,12 @@ export type DeliveryStatus =
   | "ECHEC"
   | "ANNULEE";
 
-export type Point = {
+export type GeoPoint = {
   lat: number;
   lng: number;
+};
+
+export type Point = GeoPoint & {
   /** Horodatage de la mesure, en millisecondes epoch. */
   recordedAt: number;
 };
@@ -83,7 +86,11 @@ export function formaterAge(ms: number): string {
 
 const RAYON_TERRE_KM = 6371;
 
-export function distanceKm(a: Point, b: Point): number {
+/**
+ * Distance à vol d'oiseau entre deux coordonnées (formule de haversine).
+ * Purement géométrique : n'exige pas d'horodatage, contrairement à `Point`.
+ */
+export function distanceKm(a: GeoPoint, b: GeoPoint): number {
   const dLat = toRad(b.lat - a.lat);
   const dLng = toRad(b.lng - a.lng);
   const lat1 = toRad(a.lat);

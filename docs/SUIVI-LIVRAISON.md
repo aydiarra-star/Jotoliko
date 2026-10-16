@@ -2,8 +2,9 @@
 
 ## 1. Ce qui existe dans ce dépôt
 
-Le dépôt contient le **site marketing** et la **documentation produit**. Il ne
-contient pas encore l'API NestJS ni l'application Flutter.
+Le dépôt contient le **site marketing**, l'API NestJS (`apps/api`) et une
+première page d'opérations authentifiée (`/espace/`). L'application mobile
+livreur Flutter et le suivi public par référence ne sont pas livrés.
 
 Le suivi de livraison livré ici est donc :
 
@@ -68,7 +69,35 @@ affichée que si la position est fraîche et le statut `EN_ROUTE`.
 | Livrée | non | tracé conservé | non |
 | Échec / Annulée | non | tracé conservé | non |
 
-## 5. Contrat d'API à implémenter
+## 5. API réellement disponible et intégration actuelle
+
+L'API NestJS est présente dans `apps/api`. Les missions sont exposées derrière
+authentification et contrôle de rôle :
+
+- `POST /auth/login` — authentification d'un utilisateur rattaché à une entreprise.
+- `GET /missions` et `GET /missions/:id` — lecture des missions selon le périmètre autorisé.
+- `POST /missions/:id/gps` — enregistrement d'une position avec validation.
+- `POST /missions/:id/transition` — transition de statut selon les règles métier.
+- `POST /missions/:id/payment` et `/remittance` — encaissement et remise contrôlés.
+- `POST/GET /missions/:missionId/proofs` — dépôt et lecture de preuves avec contrôle d'accès.
+
+La page `/espace/` se connecte à `POST /auth/login`, puis lit
+`GET /missions?take=50`. Elle est volontairement en lecture seule. Son URL API
+est injectée à la construction via `NEXT_PUBLIC_API_URL`; l'API doit limiter
+`CORS_ORIGIN` à l'origine exacte du frontend.
+
+Cette intégration est compilée en CI, mais elle n'a pas encore été vérifiée sur
+un environnement de staging avec des comptes de test. Les pages `/operations/`
+et `/suivi/:reference/` restent des démonstrations signalées.
+
+### Contrat futur du suivi public — non implémenté
+
+Le suivi public par référence doit avoir un jeton limité à une livraison et à
+une durée, sans réutiliser le jeton complet d'un utilisateur interne. Il ne
+doit jamais exposer les missions via un endpoint public non authentifié.
+
+Une future ingestion GPS propre au portail client pourrait suivre le contrat
+ci-dessous, après conception et tests de sécurité :
 
 ### Ingestion d'une position
 
@@ -86,7 +115,6 @@ POST /api/deliveries/:id/positions
 ```
 GET /api/companies/:id/stream        (WebSocket)
 ```
-
 Événements : `position`, `statut`, `livraison`, `preuve`, `paiement`.
 Le bureau s'abonne à son entreprise ; un livreur ne peut s'abonner qu'à ses
 propres missions. Aucune diffusion inter-entreprises.
@@ -99,9 +127,8 @@ POST /api/sync
                     "clientId": "...", "recordedAt": ..., "payload": {...} } ] }
 ```
 
-Chaque opération est appliquée une seule fois (clé `clientId`). La réponse
-indique, pour chaque opération, si elle a été appliquée ou était déjà connue.
-Le téléphone ne supprime une opération de sa file qu'après acquittement.
+Chaque opération serait appliquée une seule fois (clé `clientId`). Le téléphone
+ne supprimerait une opération de sa file qu'après acquittement.
 
 ## 6. Sécurité et permissions
 
@@ -129,11 +156,15 @@ sans données.
 
 ## 8. Ce qui n'est pas fait
 
-- Pas d'API : le suivi lit des données de démonstration locales.
-- Pas de WebSocket : la page se rafraîchit toutes les 5 secondes côté client.
-- Pas de routage : le trajet suit les points enregistrés.
-- Pas d'optimisation de tournée : hors périmètre, et sans données réelles
-  suffisantes pour l'évaluer.
+- La page publique de suivi lit encore des données fictives de `lib/demo.ts`.
+- Aucun endpoint public sécurisé par jeton limité ne permet encore de consulter
+  une livraison par référence.
+- Pas de WebSocket : la page de démonstration se rafraîchit toutes les 5 secondes côté client.
+- Pas de routage : le trajet de démonstration suit les points codés.
+- Pas d'application mobile livreur intégrée dans ce dépôt.
+- Pas de file de synchronisation hors ligne complète validée sur appareil.
+- Pas d'optimisation de tournée : hors périmètre actuel.
 
-Ces éléments sont décrits ici pour que l'implémentation serveur n'ait pas à
-redéfinir le contrat.
+Ne pas retirer le bandeau de démonstration ni publier une livraison réelle sur la
+page publique tant que le portail client et ses contrôles d'accès ne sont pas
+conçus et testés séparément.

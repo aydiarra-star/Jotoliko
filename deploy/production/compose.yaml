@@ -1,0 +1,113 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: jotoliko
+      POSTGRES_USER: jotoliko
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jotoliko -d jotoliko"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    stop_grace_period: 1m
+
+  # Run only when an operator explicitly requests the maintenance profile.
+  # Never run migrations automatically on ordinary "up".
+  migrate:
+    build:
+      context: ../..
+      dockerfile: deploy/production/Dockerfile
+      target: migrate
+    profiles: ["maintenance"]
+    restart: "no"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://jotoliko:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}@postgres:5432/jotoliko?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - data
+    command: ["npm", "--prefix", "apps/api", "run", "prisma:migrate:deploy"]
+
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/production/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      DATABASE_URL: postgresql://jotoliko:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}@postgres:5432/jotoliko?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env.production}
+      CORS_ORIGIN: ${CORS_ORIGIN:?Set CORS_ORIGIN in .env.production}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      PROOF_STORAGE_DIR: /var/lib/jotoliko/proofs
+      PAYDUNYA_MODE: ${PAYDUNYA_MODE:-sandbox}
+      PAYDUNYA_ALLOW_LIVE: ${PAYDUNYA_ALLOW_LIVE:-false}
+      PAYDUNYA_MASTER_KEY: ${PAYDUNYA_MASTER_KEY:-}
+      PAYDUNYA_PRIVATE_KEY: ${PAYDUNYA_PRIVATE_KEY:-}
+      PAYDUNYA_TOKEN: ${PAYDUNYA_TOKEN:-}
+      PAYDUNYA_CALLBACK_URL: ${PAYDUNYA_CALLBACK_URL:-}
+      PAYDUNYA_RETURN_URL: ${PAYDUNYA_RETURN_URL:-}
+      PAYDUNYA_CANCEL_URL: ${PAYDUNYA_CANCEL_URL:-}
+    volumes:
+      - ${PROOF_STORAGE_HOST_PATH:-/srv/jotoliko/proofs}:/var/lib/jotoliko/proofs
+    expose:
+      - "4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - edge
+      - data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    stop_grace_period: 30s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?Set API_DOMAIN in .env.production}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - edge
+
+networks:
+  edge:
+  data:
+    internal: true
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

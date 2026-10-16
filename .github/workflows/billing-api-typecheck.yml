@@ -1,0 +1,59 @@
+name: Jotoliko billing API typecheck
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/billing/**"
+      - "apps/api/src/missions/**"
+      - "apps/api/src/proofs/**"
+      - "apps/api/src/app.module.ts"
+      - "apps/api/src/prisma.service.ts"
+      - "apps/api/package.json"
+      - "apps/api/package-lock.json"
+      - "apps/api/tsconfig.json"
+      - "prisma/schema.prisma"
+      - ".github/workflows/billing-api-typecheck.yml"
+  push:
+    branches:
+      - "feat/monthly-self-service-subscriptions"
+    paths:
+      - "apps/api/src/billing/**"
+      - "apps/api/src/missions/**"
+      - "apps/api/src/proofs/**"
+      - "apps/api/src/app.module.ts"
+      - "apps/api/src/prisma.service.ts"
+      - "apps/api/package.json"
+      - "apps/api/package-lock.json"
+      - "apps/api/tsconfig.json"
+      - "prisma/schema.prisma"
+      - ".github/workflows/billing-api-typecheck.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/jotoliko_ci?schema=public
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - name: Install API dependencies
+        run: npm ci
+      - name: Generate Prisma Client from canonical schema
+        run: npm run prisma:generate
+      - name: Typecheck NestJS API
+        run: npm run typecheck
+      - name: Build NestJS API
+        run: npm run build

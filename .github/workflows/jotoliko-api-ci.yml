@@ -1,0 +1,301 @@
+name: Jotoliko API CI
+
+# Vérifie l'API NestJS : génération du client Prisma depuis le schéma canonique,
+# application des migrations sur une base vierge, détection de dérive entre le
+# schéma et les migrations, typecheck et build.
+#
+# Ce workflow était auparavant en échec : `@types/express` était absent des
+# dépendances, donc `nest build` échouait sur `src/auth/auth.types.ts`.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: jotoliko-api-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API (Prisma, migrations, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: jotoliko
+          POSTGRES_PASSWORD: jotoliko
+          POSTGRES_DB: jotoliko_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jotoliko -d jotoliko_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://jotoliko:jotoliko@localhost:5432/jotoliko_ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+
+      - name: Installation reproductible
+        run: npm ci
+
+      - name: Validation du schéma Prisma
+        run: npm run prisma:validate
+
+      - name: Génération du client Prisma
+        run: npm run prisma:generate
+
+      - name: Application des migrations
+        run: npm run prisma:migrate:deploy
+
+      - name: Détection de dérive schéma ⇄ migrations
+        # Échoue si le schéma déclare une table ou une colonne qu'aucune
+        # migration ne crée. C'est le garde-fou qui empêche la réapparition d'un
+        # schéma parallèle non migré — la cause exacte de la panne de build
+        # d'origine. Le diff est aussi publié en artefact pour être lisible
+        # même lorsque les journaux du runner ne sont pas accessibles.
+        id: drift
+        run: |
+          set +e
+          npx prisma migrate diff \
+            --from-migrations ../../prisma/migrations \
+            --to-schema-datamodel ../../prisma/schema.prisma \
+            --shadow-database-url "$DATABASE_URL" \
+            --exit-code > drift.sql 2>&1
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            # Le diff est publié en annotations : celles-ci restent lisibles via
+            # l'API des check-runs même quand les journaux du runner ne sont pas
+            # téléchargeables depuis l'environnement appelant.
+            n=0
+            while IFS= read -r line && [ "$n" -lt 60 ]; do
+              [ -z "$line" ] && continue
+              echo "::error title=DRIFT(${n})::$(printf '%s' "$line" | head -c 900)"
+              n=$((n + 1))
+            done < drift.sql
+            echo "::error::Dérive détectée entre prisma/schema.prisma et prisma/migrations."
+          fi
+          echo "drift_exit=$code" >> "$GITHUB_OUTPUT"
+          exit "$code"
+
+      - name: Publier le diff de dérive
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prisma-drift-diff
+          path: apps/api/drift.sql
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Typecheck
+        # Les erreurs sont publiées en annotations : celles-ci restent lisibles
+        # via l'API des check-runs quand les journaux du runner ne sont pas
+        # téléchargeables depuis l'environnement appelant.
+        run: |
+          set +e
+          npx tsc --noEmit > tsc.log 2>&1
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            n=0
+            while IFS= read -r line && [ "$n" -lt 40 ]; do
+              [ -z "$line" ] && continue
+              echo "::error title=TSC(${n})::$(printf '%s' "$line" | head -c 900)"
+              n=$((n + 1))
+            done < tsc.log
+          fi
+          exit "$code"
+
+      - name: Typecheck des scripts d'exploitation
+        # `checkJs` sur `ops/` : attrape les identifiants non définis et les
+        # contrats de données violés **avant** l'exécution. Le défaut réel qui a
+        # motivé ce contrôle (un import manquant dans le socle partagé) n'était
+        # visible ni à la compilation TypeScript, ni à la lecture, ni en local —
+        # seulement en exécutant le script sur PostgreSQL, en CI.
+        working-directory: ${{ github.workspace }}
+        run: |
+          set +e
+          npx tsc -p ops/tsconfig.json > ops-tsc.log 2>&1
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            n=0
+            while IFS= read -r line && [ "$n" -lt 40 ]; do
+              [ -z "$line" ] && continue
+              echo "::error title=OPS-TSC(${n})::$(printf '%s' "$line" | head -c 900)"
+              n=$((n + 1))
+            done < ops-tsc.log
+          fi
+          exit "$code"
+
+      - name: Build
+        run: npm run build
+
+      - name: Vérification du point d'entrée démarré
+        # Le script `start` doit pointer vers l'artefact réellement produit :
+        # une erreur de chemin ici ne se voit qu'au déploiement.
+        run: test -f dist/apps/api/src/main.js
+
+      # Contrôle HTTP hors ligne : démarre réellement l'API construite et
+      # vérifie les couches indépendantes de la base (gardes d'authentification,
+      # validation, limitation de débit, CORS, en-têtes, corrélation, erreurs).
+      # Il complète la suite « bout en bout » sans la remplacer : celle-ci exige
+      # PostgreSQL et vérifie le métier.
+      - name: Contrôle HTTP hors ligne
+        # Le job s'exécute par défaut dans apps/api : ce contrôle part de la
+        # racine, où vit le script, et démarre l'API construite.
+        working-directory: ${{ github.workspace }}
+        run: npm run api:smoke
+
+      - name: Audit des dépendances (informatif)
+        # Signalé sans bloquer la CI : une remédiation peut exiger une montée de
+        # version majeure, et cette décision n'appartient pas à une étape de CI.
+        #
+        # Le code de sortie est capturé par le script, et non par
+        # `continue-on-error` : ce dernier marque l'étape en succès tout en
+        # laissant GitHub publier une annotation de niveau **erreur** (« exit code
+        # 1 ») sur un job vert. Un job vert porteur d'une annotation d'échec
+        # apprend à ignorer les annotations — le contraire de ce qu'on cherche.
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -uo pipefail
+          node scripts/npm-audit-summary.mjs apps/api "API (dépendances d'exécution)"
+          node scripts/npm-audit-summary.mjs . "racine (site + outillage)"
+
+  # ---------------------------------------------------------------------------
+  # Tests HTTP de bout en bout.
+  #
+  # Le serveur est lancé tel qu'il est livré (`node dist/apps/api/src/main.js`)
+  # sur une vraie base PostgreSQL, et interrogé par de vraies requêtes HTTP : la
+  # chaîne garde d'authentification → garde de permissions → validation → service
+  # → Prisma → SQL → contraintes est réellement exercée. C'est ce que la
+  # compilation et les tests unitaires ne peuvent pas prouver.
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: Tests HTTP de bout en bout (API + PostgreSQL 16)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: jotoliko
+          POSTGRES_PASSWORD: jotoliko
+          POSTGRES_DB: jotoliko_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jotoliko -d jotoliko_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://jotoliko:jotoliko@localhost:5432/jotoliko_e2e
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Dépendances du dépôt (harnais de test)
+        run: npm ci
+
+      - name: Dépendances de l'API
+        run: npm --prefix apps/api ci
+
+      - name: Génération du client Prisma
+        run: npm --prefix apps/api run prisma:generate
+
+      - name: Build de l'API
+        run: npm --prefix apps/api run build
+
+      - name: Vérification du point d'entrée démarré
+        run: test -f apps/api/dist/apps/api/src/main.js
+
+      - name: Tests HTTP de bout en bout
+        # Aucun test n'est ignoré ici : les suites qui exigent une base échouent
+        # si DATABASE_URL est absent (voir tests/api-e2e/harness.ts).
+        id: e2e
+        run: |
+          set +e
+          npx vitest run --config vitest.e2e.config.ts \
+            --reporter=default --reporter=json --outputFile=e2e-report.json > e2e.log 2>&1
+          code=$?
+          set -e
+          # Appelé dans tous les cas : en cas d'échec, les cas fautifs sont
+          # republiés en annotations ; en cas de succès, un bilan publie le
+          # nombre de cas réellement exécutés (y compris les ignorés). Les
+          # annotations restent lisibles via l'API des check-runs même quand les
+          # journaux du runner ne sont pas téléchargeables.
+          node scripts/emit-vitest-annotations.mjs e2e-report.json e2e.log "$code" || true
+          exit "$code"
+
+      - name: Restituer les mesures d'exploitation
+        # Les scripts d'exploitation (sauvegarde, restauration, purge) publient
+        # leurs résultats en commandes de workflow ; pendant les tests, elles sont
+        # capturées dans `e2e.log` et n'atteignent donc pas GitHub. Elles sont
+        # réémises ici pour être lisibles en annotations — notamment les durées de
+        # restauration mesurées, qui alimentent le RTO du rapport de préparation.
+        #
+        # Seuls les niveaux `notice` et `warning` sont réémis : un `error` réémis
+        # depuis un journal produirait une annotation d'échec sur un job vert.
+        if: always()
+        run: |
+          set -euo pipefail
+          # Les mesures sont publiées depuis un fichier écrit par les tests, et non
+          # depuis le journal : la sortie console d'un test est capturée par le
+          # moteur de test, puis reformatée — s'y fier produirait un silence trompeur.
+          node -e '
+            const fs = require("node:fs");
+            if (!fs.existsSync("ops-measures.json")) {
+              console.log("::notice title=RTO-MESURÉ::aucune mesure enregistrée par cette exécution");
+              process.exit(0);
+            }
+            const m = JSON.parse(fs.readFileSync("ops-measures.json", "utf8"));
+            console.log(
+              `::notice title=RTO-MESURÉ::restauration base+volume ${m.restoredTotalMs} ms ` +
+              `(base ${m.restoredDatabaseMs} ms, volume ${m.restoredVolumeMs} ms) ; base seule ${m.databaseOnlyMs} ms ; ` +
+              `${m.proofsVerified}/${m.proofsReferenced} preuve(s) à empreinte conforme ; ` +
+              `${m.proofsWithoutFileIfDatabaseOnly} preuve(s) sans fichier si le volume n est pas restauré ; ` +
+              `problèmes : ${m.problems} — sauvegarde ${m.backupTag} (${m.backupCreatedAt})`
+            );
+            console.log(
+              "::notice title=PORTÉE-DE-LA-MESURE::RTO mesuré sur une base de test PostgreSQL 16 dans un exécuteur CI, " +
+              "hors concurrence et sans les données réelles : le RTO d une infrastructure réelle sera supérieur."
+            );
+          '
+
+      - name: Publier le journal des tests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-e2e-logs
+          path: |
+            e2e.log
+            e2e-report.json
+          if-no-files-found: ignore
+          retention-days: 7

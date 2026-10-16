@@ -1,0 +1,107 @@
+name: Jotoliko OS CI
+
+# Vérifie le site, les invariants métier partagés et le schéma de base de
+# données sur PostgreSQL réel. Ce workflow était auparavant en échec : la racine
+# `tsconfig.json` incluait `apps/api`, dont les décorateurs NestJS ne compilent
+# pas avec les options du site, et `app/operations/page.tsx` produisait des
+# erreurs de type. Les deux sont corrigés.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: jotoliko-os-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Site marketing, invariants métier, base de données embarquée (PGlite),
+  # puis export statique.
+  # ---------------------------------------------------------------------------
+  validate:
+    name: Site + invariants + PostgreSQL embarqué
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installation reproductible du site
+        run: npm ci
+
+      # Les tests et certains modules du site importent des services de l'API.
+      # Installer l'espace API séparément garantit ses dépendances NestJS et
+      # génère le client Prisma à partir du schéma partagé avant le typecheck.
+      - name: Installation reproductible de l'API
+        run: npm ci --prefix apps/api
+
+      - name: Génération du client Prisma partagé
+        run: npm --prefix apps/api run prisma:generate
+
+      - name: Typecheck (site)
+        run: npm run typecheck
+
+      - name: Tests unitaires et reality tests
+        run: npm test
+
+      - name: Build du site (export statique)
+        run: npm run build
+        env:
+          NEXT_PUBLIC_BASE_PATH: /Jotoliko
+          NEXT_PUBLIC_SITE_URL: https://aydiarra-star.github.io/Jotoliko
+
+  # ---------------------------------------------------------------------------
+  # Même suite de tests, mais contre un vrai serveur PostgreSQL 16 : c'est le
+  # seul endroit où la concurrence réelle (deux connexions simultanées) peut être
+  # vérifiée. En local, ces cas sont marqués « ignorés » plutôt que simulés.
+  # ---------------------------------------------------------------------------
+  database:
+    name: Reality tests sur PostgreSQL 16 réel
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: jotoliko
+          POSTGRES_PASSWORD: jotoliko
+          POSTGRES_DB: jotoliko_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jotoliko -d jotoliko_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installation reproductible du dépôt
+        run: npm ci
+
+      - name: Installation reproductible de l'API
+        run: npm ci --prefix apps/api
+
+      - name: Génération du client Prisma partagé
+        run: npm --prefix apps/api run prisma:generate
+
+      # Les suites « reality » appliquent elles-mêmes toutes les migrations à
+      # partir de zéro : un pré-application ici serait redondant et masquerait
+      # le fait que la migration est bien rejouable sur base vierge.
+      - name: Reality tests (concurrence réelle)
+        run: npm test
+        env:
+          DATABASE_URL: postgresql://jotoliko:jotoliko@localhost:5432/jotoliko_test

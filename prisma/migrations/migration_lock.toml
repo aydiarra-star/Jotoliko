@@ -1,0 +1,6 @@
+# Ce fichier est requis par Prisma pour déterminer le connecteur des
+# migrations. Il est normalement créé par `prisma migrate dev` ; il manquait,
+# ce qui faisait échouer la détection de dérive en CI avec :
+#   "Could not determine the connector from the migrations directory".
+
+provider = "postgresql"
