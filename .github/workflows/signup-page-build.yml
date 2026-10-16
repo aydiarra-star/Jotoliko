@@ -37,7 +37,7 @@ concurrency:
 
 jobs:
   static-site:
-    name: Typecheck and static export
+    name: Build and validate static site
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,21 +45,16 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Install dependencies
+      - name: Install site dependencies
         run: npm ci
-      # Root tests import the signup service from the API. Install its own
-      # dependencies and generate its Prisma client before root TypeScript checks.
-      - name: Install API dependencies
-        run: npm ci --prefix apps/api
-      - name: Generate API Prisma client
-        run: npm run api:prisma:generate
-      - name: Typecheck site and imported signup service
-        run: npm run typecheck
+      # The dedicated API typecheck and signup-test workflows validate NestJS.
+      # Root tsc also follows API imports from the service tests, but compiles
+      # those decorators with the frontend tsconfig; Next build checks app code
+      # with its own configuration instead.
       - name: Build static site
         run: npm run build
         env:
           NEXT_PUBLIC_BASE_PATH: /Jotoliko
           NEXT_PUBLIC_SITE_URL: https://aydiarra-star.github.io/Jotoliko
-          # No live API URL is supplied in CI. The page must build safely with
-          # signup disabled rather than inventing prices or payment methods.
+          # No live API URL is supplied in CI. Signup must remain safely disabled.
           NEXT_PUBLIC_API_BASE_URL: ""
