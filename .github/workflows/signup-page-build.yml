@@ -47,10 +47,13 @@ jobs:
           cache: npm
       - name: Install site dependencies
         run: npm ci
-      # The dedicated API typecheck and signup-test workflows validate NestJS.
-      # Root tsc also follows API imports from the service tests, but compiles
-      # those decorators with the frontend tsconfig; Next build checks app code
-      # with its own configuration instead.
+      # Next's project-wide type validation follows a shared auth service from
+      # existing frontend imports, so its NestJS and generated Prisma types must
+      # be available even though API checks run in a separate workflow.
+      - name: Install API dependencies
+        run: npm ci --prefix apps/api
+      - name: Generate Prisma client
+        run: npm run api:prisma:generate
       - name: Build static site
         run: npm run build
         env:
