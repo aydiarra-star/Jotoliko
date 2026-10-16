@@ -87,7 +87,7 @@ export class BillingService {
       },
       select: { id: true, code: true, version: true, currency: true, unitPriceXof: true },
     });
-    if (!activePrice || !Number.isSafeInteger(activePrice.unitPriceXof * attempt.seatCount)) {
+    if (!activePrice || activePrice.unitPriceXof <= 0 || !Number.isSafeInteger(activePrice.unitPriceXof * attempt.seatCount)) {
       throw new ServiceUnavailableException({ code: "PRICE_NOT_CONFIGURED", message: "Le tarif choisi n'est plus actif. Aucun paiement n'a été lancé." });
     }
 
@@ -420,7 +420,7 @@ export class BillingService {
       });
     }
     const prices = await this.prisma.planPrice.findMany({
-      where: { isActive: true, effectiveFrom: { lte: now }, OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }], currency: "XOF" },
+      where: { isActive: true, effectiveFrom: { lte: now }, OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }], currency: "XOF", unitPriceXof: { gt: 0 } },
       orderBy: [{ code: "asc" }, { version: "desc" }],
       select: { id: true, code: true, version: true, currency: true, unitPriceXof: true, effectiveFrom: true, effectiveUntil: true },
     });
@@ -438,7 +438,7 @@ export class BillingService {
   /** Expose only explicitly configured, currently effective prices. */
   async listPublicPrices(now = new Date()) {
     const prices = await this.prisma.planPrice.findMany({
-      where: { isActive: true, currency: "XOF", effectiveFrom: { lte: now }, OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }] },
+      where: { isActive: true, currency: "XOF", unitPriceXof: { gt: 0 }, effectiveFrom: { lte: now }, OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }] },
       orderBy: [{ unitPriceXof: "asc" }, { version: "desc" }],
       select: { id: true, code: true, version: true, currency: true, unitPriceXof: true, effectiveFrom: true, effectiveUntil: true },
     });
