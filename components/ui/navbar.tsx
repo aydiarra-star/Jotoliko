@@ -125,7 +125,7 @@ export function Navbar() {
                 <Link href="/contact" className="btn-ghost w-full">
                   Contact
                 </Link>
-                <Link href="/demo" className="btn-primary w-full">
+                <Link href="/inscription" className="btn-primary w-full">
                   Créer un compte professionnel
                 </Link>
               </div>
