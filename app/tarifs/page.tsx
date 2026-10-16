@@ -18,8 +18,8 @@ export default function PricingPage() {
     <>
       <PageHero
         eyebrow="Tarifs"
-        title="Des prix clairs, en FCFA, sans surprise."
-        body="Payez pour ce que vous utilisez réellement. Tous les plans incluent les commandes illimitées et l'application livreur."
+        title="Une offre adaptée à votre activité."
+        body="Les tarifs commerciaux sont en cours de configuration. Le montant exact sera calculé par le serveur à partir d'une offre active ; aucun prix ne sera inventé."
       />
 
       <Section>
@@ -66,7 +66,7 @@ export default function PricingPage() {
         </div>
 
         <p className="mt-8 text-center text-sm text-ink-500">
-          Tous les prix sont hors taxes. Réduction de 20% sur les engagements annuels.{" "}
+          Le montant final et les conditions de facturation seront affichés avant le paiement, une fois la tarification activée.{" "}
           <Link href="/contact" className="font-semibold text-brand">
             Un besoin particulier ?
           </Link>
@@ -88,8 +88,8 @@ export default function PricingPage() {
       </Section>
 
       <CTA
-        title="Commencez gratuitement, passez à l'échelle ensuite."
-        body="Créez votre espace en quelques minutes. Notre équipe vous aide à importer vos clients et vos premières commandes."
+        title="Préparez votre espace professionnel."
+        body="Créez une demande en libre-service. L'accès opérationnel sera activé uniquement après la configuration du paiement et sa confirmation côté serveur."
         primary={{ href: "/inscription", label: "Créer un compte professionnel" }}
         secondary={{ href: "/contact", label: "Une question ? Contactez-nous" }}
       />
