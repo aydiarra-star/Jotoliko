@@ -220,7 +220,14 @@ export class BillingService {
 
     const verified = await this.paydunya.confirmInvoice(invoiceToken);
     if (verified.status !== "completed") {
-      return { received: true, status: verified.status === "failed" || verified.status === "cancelled" ? "PAYMENT_NOT_COMPLETED" : "PENDING" };
+      if (verified.status === "failed" || verified.status === "cancelled") {
+        await this.prisma.billingPayment.updateMany({
+          where: { id: payment.id, status: "PENDING" },
+          data: { status: "FAILED" },
+        });
+        return { received: true, status: "PAYMENT_NOT_COMPLETED", retryAllowed: true };
+      }
+      return { received: true, status: "PENDING" };
     }
     if (
       verified.amountXof !== payment.amountXof ||
