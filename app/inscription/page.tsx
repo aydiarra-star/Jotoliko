@@ -190,6 +190,9 @@ export default function SignupPage() {
           <p className="mt-4 leading-relaxed text-ink-500">
             Configurez votre entreprise et le nombre de livreurs. Le montant est recalculé par le serveur. Votre espace opérationnel ne sera activé qu'après confirmation vérifiée du paiement.
           </p>
+          <p className="mt-3 text-sm text-ink-500">
+            Vous avez déjà commencé une inscription ? <Link href="/inscription/reprendre/" className="font-semibold text-brand underline underline-offset-4">Reprendre mon inscription</Link>.
+          </p>
         </div>
 
         {result ? (
@@ -262,7 +265,7 @@ export default function SignupPage() {
 
             <button type="submit" disabled={submitting || pricesLoading || prices.length === 0 || !apiBase} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50">
               {submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-              {submitting ? "Enregistrement…" : "Créer ma demande professionnelle"}
+              {submitting ? "Enregistrement…" : "Créer mon compte professionnel"}
               {!submitting ? <ArrowRight className="h-4 w-4" /> : null}
             </button>
             <p className="text-center text-xs leading-relaxed text-ink-500">
