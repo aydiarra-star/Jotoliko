@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import { ArrowLeft, ArrowRight, CheckCircle2, Copy, LoaderCircle, ShieldCheck } from "lucide-react";
 
 type Price = {
@@ -97,7 +98,8 @@ export default function SignupPage() {
       setError("Le service d'inscription ou le tarif n'est pas configuré. Aucun compte n'a été créé.");
       return;
     }
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const payload = {
       companyName: String(form.get("companyName") ?? "").trim(),
       ownerFirstName: String(form.get("ownerFirstName") ?? "").trim(),
@@ -120,7 +122,7 @@ export default function SignupPage() {
         throw new Error(Array.isArray(data?.message) ? data.message.join(" ") : message);
       }
       setResult(data as SignupResult);
-      event.currentTarget.reset();
+      formElement.reset();
       setSeatCount(1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur réseau. Réessayez.");
