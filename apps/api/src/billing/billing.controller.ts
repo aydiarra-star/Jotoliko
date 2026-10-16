@@ -1,10 +1,9 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, HttpCode, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { AuthGuard } from "../auth/auth.guard";
 import type { AuthenticatedRequest } from "../auth/auth.types";
 import { BillingService } from "./billing.service";
 import { CreateSignupCheckoutDto } from "./dto/create-signup-checkout.dto";
-import { PayDunyaCallbackDto } from "./dto/paydunya-callback.dto";
 
 @Controller("billing")
 export class BillingController {
@@ -42,8 +41,14 @@ export class BillingController {
   @Post("paydunya/callback")
   @HttpCode(200)
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  paydunyaCallback(@Body() body: PayDunyaCallbackDto) {
-    return this.billing.processPayDunyaCallback(body.token);
+  paydunyaCallback(@Body() body: Record<string, unknown>) {
+    const data = body.data && typeof body.data === "object" ? body.data as Record<string, unknown> : undefined;
+    const invoice = data?.invoice && typeof data.invoice === "object" ? data.invoice as Record<string, unknown> : undefined;
+    const token = body.token ?? data?.token ?? invoice?.token;
+    if (typeof token !== "string" || !/^[a-zA-Z0-9_-]{4,200}$/.test(token)) {
+      throw new BadRequestException("Jeton de facture PayDunya manquant ou invalide.");
+    }
+    return this.billing.processPayDunyaCallback(token);
   }
 
   /** Authenticated company-scoped subscription summary; never accepts companyId from the client. */
