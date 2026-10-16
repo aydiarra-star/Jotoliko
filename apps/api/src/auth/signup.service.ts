@@ -59,7 +59,7 @@ export class SignupService {
       select: { id: true, code: true, version: true, currency: true, unitPriceXof: true },
     });
 
-    if (!price || !Number.isSafeInteger(price.unitPriceXof * input.seatCount)) {
+    if (!price || price.unitPriceXof <= 0 || !Number.isSafeInteger(price.unitPriceXof * input.seatCount)) {
       throw new ServiceUnavailableException({
         code: "PRICE_NOT_CONFIGURED",
         message: "Cette offre n'est pas disponible. Aucun compte ni paiement n'a été créé.",
@@ -233,7 +233,7 @@ export class SignupService {
       orderBy: { version: "desc" },
       select: { id: true, code: true, version: true, currency: true, unitPriceXof: true },
     });
-    if (!price || !Number.isSafeInteger(price.unitPriceXof * seatCount)) {
+    if (!price || price.unitPriceXof <= 0 || !Number.isSafeInteger(price.unitPriceXof * seatCount)) {
       throw new ServiceUnavailableException({
         code: "PRICE_NOT_CONFIGURED",
         message: "Cette offre n'est pas disponible. Aucun paiement n'a été déclenché.",
