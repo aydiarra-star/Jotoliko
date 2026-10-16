@@ -3,6 +3,7 @@ name: Jotoliko PayDunya client tests
 on:
   push:
     branches:
+      - main
       - "feat/self-service-signup-foundation"
     paths:
       - "apps/api/src/billing/**"
@@ -10,6 +11,7 @@ on:
       - "apps/api/src/main.ts"
       - "tests/paydunya-client.test.ts"
       - "tests/billing-checkout.test.ts"
+      - "tests/billing-signup-activation.test.ts"
       - "tests/signup-service.test.ts"
       - "prisma/schema.prisma"
       - "prisma/migrations/**"
@@ -19,9 +21,18 @@ on:
       - "apps/api/package-lock.json"
       - ".github/workflows/paydunya-client-tests.yml"
   pull_request:
+    branches:
+      - main
     paths:
-      - "apps/api/src/billing/paydunya.client.ts"
+      - "apps/api/src/billing/**"
+      - "apps/api/src/auth/signup.service.ts"
+      - "apps/api/src/main.ts"
       - "tests/paydunya-client.test.ts"
+      - "tests/billing-checkout.test.ts"
+      - "tests/billing-signup-activation.test.ts"
+      - "tests/signup-service.test.ts"
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**"
       - "package.json"
       - "package-lock.json"
       - "apps/api/package.json"
@@ -55,8 +66,8 @@ jobs:
         run: npm ci --prefix apps/api
       - name: Generate Prisma Client
         run: npm run api:prisma:generate
-      - name: Run PayDunya client tests
-        run: npm test -- tests/paydunya-client.test.ts tests/billing-checkout.test.ts
+      - name: Run PayDunya client and billing tests
+        run: npm test -- tests/paydunya-client.test.ts tests/billing-checkout.test.ts tests/billing-signup-activation.test.ts tests/signup-service.test.ts
       - name: Typecheck and build API
         working-directory: apps/api
         run: |
