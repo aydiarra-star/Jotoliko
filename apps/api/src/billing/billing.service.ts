@@ -214,13 +214,13 @@ export class BillingService {
     assertPaymentEnvironmentAllowed();
     const payment = await this.prisma.billingPayment.findFirst({
       where: { provider: PROVIDER, providerReference: invoiceToken },
-      include: { signupAttempt: true },
+      include: { signupAttempt: true, subscription: { select: { companyId: true } } },
     });
     if (!payment || !payment.signupAttemptId || !payment.signupAttempt) {
       throw new UnprocessableEntityException("Facture inconnue.");
     }
     if (payment.status === "CONFIRMED" && payment.signupAttempt.status === "ACTIVE") {
-      return { received: true, status: "ACTIVE", idempotent: true, companySlug: payment.signupAttempt.companySlug };
+      return { received: true, status: "ACTIVE", idempotent: true, companyId: payment.subscription?.companyId ?? null, companySlug: payment.signupAttempt.companySlug };
     }
 
     const verified = await this.paydunya.confirmInvoice(invoiceToken);
