@@ -29,7 +29,9 @@ async function bootstrap(): Promise<void> {
   // maximale acceptée, jamais choisie « large au cas où ».
   const bodyLimit = Math.ceil((MAX_PROOF_BYTES * 4) / 3) + 64 * 1024;
   app.use(json({ limit: bodyLimit }));
-  app.use(urlencoded({ extended: false, limit: bodyLimit }));
+  // PayDunya IPN uses application/x-www-form-urlencoded nested `data[...]` fields.
+  // Extended parsing reconstructs that object so the callback can extract the invoice token.
+  app.use(urlencoded({ extended: true, limit: bodyLimit }));
 
   // L'adresse client retenue par Express (donc par la limitation de débit et la
   // journalisation) dépend de ce réglage. À 0, aucun en-tête n'est cru.
