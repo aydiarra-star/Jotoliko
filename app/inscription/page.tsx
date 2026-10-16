@@ -154,6 +154,12 @@ export default function SignupPage() {
       if (url.protocol !== "https:" || url.hostname !== "app.paydunya.com") {
         throw new Error("L'adresse de paiement reçue n'est pas reconnue. Aucun paiement n'a été ouvert.");
       }
+      try {
+        sessionStorage.setItem("jotoliko_signup_attempt_id", result.signupAttemptId);
+        sessionStorage.setItem("jotoliko_signup_resume_token", result.resumeToken);
+      } catch {
+        // The server callback remains authoritative even if browser storage is disabled.
+      }
       window.location.assign(url.toString());
     } catch (e) {
       setCheckoutError(e instanceof Error ? e.message : "Erreur réseau. Réessayez.");
