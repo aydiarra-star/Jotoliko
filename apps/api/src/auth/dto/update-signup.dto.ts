@@ -8,8 +8,9 @@ import {
   MaxLength,
   Min,
 } from "class-validator";
+import { ResumeSignupDto } from "./resume-signup.dto";
 
-export class UpdateSignupDto {
+export class UpdateSignupDto extends ResumeSignupDto {
   @IsOptional()
   @Transform(({ value }: { value: unknown }) => typeof value === "string" ? value.trim() : value)
   @IsString()
