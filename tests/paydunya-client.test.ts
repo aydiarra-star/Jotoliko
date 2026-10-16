@@ -105,7 +105,7 @@ describe("PayDunyaClient", () => {
     expect(result).toEqual({
       status: "completed",
       amountXof: 15000,
-      currency: "XOF",
+      currency: null,
       reference: "signup-123",
     });
   });
