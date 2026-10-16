@@ -35,8 +35,17 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Installation reproductible
+      - name: Installation reproductible du site
         run: npm ci
+
+      # Les tests et certains modules du site importent des services de l'API.
+      # Installer l'espace API séparément garantit ses dépendances NestJS et
+      # génère le client Prisma à partir du schéma partagé avant le typecheck.
+      - name: Installation reproductible de l'API
+        run: npm ci --prefix apps/api
+
+      - name: Génération du client Prisma partagé
+        run: npm --prefix apps/api run prisma:generate
 
       - name: Typecheck (site)
         run: npm run typecheck
