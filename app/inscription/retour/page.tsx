@@ -11,6 +11,7 @@ type PaymentState = "checking" | "active" | "pending" | "failed" | "unavailable"
 export default function SignupReturnPage() {
   const [state, setState] = useState<PaymentState>("checking");
   const [companySlug, setCompanySlug] = useState("");
+  const [companyId, setCompanyId] = useState("");
   const [message, setMessage] = useState("Vérification du paiement auprès du serveur sécurisé…");
   const [copied, setCopied] = useState(false);
 
@@ -35,12 +36,13 @@ export default function SignupReturnPage() {
             cache: "no-store",
           });
           const data = await response.json().catch(() => ({})) as {
-            status?: string; companySlug?: string; message?: string;
+            status?: string; companySlug?: string; companyId?: string | null; message?: string;
           };
           if (!response.ok) throw new Error(typeof data.message === "string" ? data.message : "La confirmation n'est pas encore disponible.");
           if (cancelled) return;
           if (data.status === "ACTIVE") {
             setCompanySlug(data.companySlug ?? "");
+            setCompanyId(data.companyId ?? "");
             setState("active");
             setMessage("Le paiement a été confirmé par PayDunya et l'espace professionnel est activé.");
             try {
@@ -94,19 +96,28 @@ export default function SignupReturnPage() {
           {state === "active" ? "Votre compte professionnel est activé" : state === "failed" ? "Paiement non confirmé" : "Confirmation du paiement"}
         </h1>
         <p role="status" className="mt-3 text-sm leading-relaxed text-ink-500">{message}</p>
-        {companySlug ? (
-          <div className="mt-6 rounded-xl bg-slate-50 p-4">
-            <p className="text-sm font-medium">Identifiant de l'entreprise</p>
-            <code className="mt-2 block break-all text-sm">{companySlug}</code>
-            <button type="button" onClick={() => void copySlug()} className="btn-ghost mt-3 w-full">
-              <Copy className="h-4 w-4" /> {copied ? "Identifiant copié" : "Copier l'identifiant"}
-            </button>
+        {state === "active" ? (
+          <div className="mt-6 space-y-4 rounded-xl bg-slate-50 p-4">
+            {companyId ? <div>
+              <p className="text-sm font-medium">Identifiant entreprise requis pour la connexion</p>
+              <code className="mt-2 block break-all text-sm">{companyId}</code>
+              <button type="button" onClick={async () => {
+                try { await navigator.clipboard.writeText(companyId); setCopied(true); } catch { setCopied(false); }
+              }} className="btn-ghost mt-3 w-full">
+                <Copy className="h-4 w-4" /> {copied ? "Identifiant copié" : "Copier l’identifiant entreprise"}
+              </button>
+            </div> : <p className="text-sm text-amber-800">L’identifiant de connexion n’a pas encore été récupéré. Rechargez cette page dans quelques instants.</p>}
+            {companySlug ? <div>
+              <p className="text-sm font-medium">Référence lisible de l’entreprise</p>
+              <code className="mt-2 block break-all text-sm">{companySlug}</code>
+            </div> : null}
           </div>
         ) : null}
         <p className="mt-5 text-xs leading-relaxed text-ink-500">
           Le retour du navigateur n'est jamais considéré comme une preuve de paiement. Seule la confirmation serveur de PayDunya autorise l'activation.
         </p>
-        <Link href="/" className="btn-primary mt-6 w-full">Retour à l'accueil</Link>
+        {state === "active" ? <Link href="/espace/" className="btn-primary mt-6 w-full">Accéder à l’espace opérations</Link> : null}
+        <Link href="/" className="btn-ghost mt-3 w-full">Retour à l’accueil</Link>
       </div>
     </main>
   );
