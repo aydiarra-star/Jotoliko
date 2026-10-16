@@ -1,71 +1,70 @@
-# Fondation d'inscription autonome — Jotoliko
+# Inscription professionnelle en libre-service — Jotoliko
 
-## Objectif de cette étape
+## État vérifié de la branche
 
-Préparer le parcours de création d'un compte professionnel sans modifier les comptes existants, sans activer les fonctions payantes avant confirmation serveur du paiement et sans effectuer de migration ou de paiement en production.
+Cette fondation est implémentée sur `feat/self-service-signup-foundation` et proposée dans la PR #8. Elle n'est pas encore fusionnée ni déployée.
 
-Cette note complète `docs/MONTHLY-SELF-SERVICE-SUBSCRIPTIONS.md`. Le socle d'inscription et de reprise décrit ci-dessous est en cours d'implémentation sur une branche isolée ; le parcours de paiement et d'activation reste incomplet.
+- `POST /auth/signup` crée une tentative limitée à 24 h, sans créer prématurément un compte opérationnel.
+- Le tarif est sélectionné dans les tarifs actifs côté serveur en XOF ; aucun tarif par défaut n'est inventé.
+- Le mot de passe est haché avec un sel aléatoire. Le jeton de reprise est aléatoire et seule son empreinte SHA-256 est persistée.
+- La reprise et la modification d'une tentative en attente nécessitent le jeton secret.
+- `POST /billing/signup/:id/checkout` réserve un paiement, calcule le montant côté serveur et utilise le checkout hébergé PayDunya. Une facture en attente peut être réutilisée.
+- `POST /billing/paydunya/callback` et `POST /billing/paydunya/return` traitent le jeton comme un identifiant, puis demandent une confirmation directement à PayDunya. Le service vérifie la signature de confirmation, le statut terminé, le montant exact et la référence d'inscription.
+- Après confirmation valide, une transaction Prisma crée l'entreprise, le propriétaire, son appartenance OWNER et l'abonnement actif pour la première période mensuelle, puis confirme le paiement et active la tentative.
+- Les callbacks répétés sont idempotents. Les migrations additives ajoutent l'URL de checkout et créent le rôle OWNER uniquement s'il est absent.
+- La page publique « Créer un compte professionnel » affiche les tarifs renvoyés par l'API et n'affirme pas qu'un compte est activé avant confirmation serveur.
 
-## État du socle existant vérifié
+## Vérifications CI observées
 
-- Le schéma Prisma canonique est `prisma/schema.prisma`.
-- `Company`, `User`, `Membership` et `Role` existent déjà ; l'email utilisateur et le slug d'entreprise sont uniques.
-- L'authentification existante crée un jeton à partir d'un utilisateur et d'une appartenance existants. Une première route publique `POST /auth/signup` a été ajoutée sur la branche de travail.
-- Le service de facturation expose les prix actifs configurés et des devis indicatifs en lecture seule. Il ne crée pas encore de checkout.
-- La branche de travail doit rester isolée jusqu'à validation et tests ; aucune migration de base partagée n'est autorisée à cette étape.
+Sur le commit de tête vérifié lors de l'audit, les workflows suivants sont terminés avec succès :
 
-## Décision de conception
+- Tests du client PayDunya.
+- Tests de facturation et de sécurité du checkout.
+- Tests du service d'inscription et de l'activation après paiement.
+- Build de la page d'inscription.
+- Typecheck et build de l'API.
+- Test des migrations sur PostgreSQL jetable.
+- Validation de configuration de déploiement.
 
-Le parcours doit distinguer une tentative d'inscription persistante du compte opérationnel activé :
+Ces tests ne remplacent pas un test d'intégration avec le compte marchand PayDunya réel ou sandbox.
 
-1. Le client soumet le nom de l'entreprise, l'email, le nom du propriétaire, son mot de passe, un code d'offre et le nombre de places.
-2. Le serveur normalise les champs et valide les formats et limites. L'email déjà enregistré est refusé ; le slug de l'entreprise est généré avec un suffixe aléatoire pour éviter une collision technique.
-3. Le serveur conserve une tentative d'inscription à durée limitée. Un mot de passe ne doit jamais être stocké en clair ; privilégier un hash fort avec sel, durée de vie limitée et politique de purge.
-4. Le client peut reprendre la configuration de son entreprise et choisir le nombre de places. Le prix est toujours calculé à partir d'un tarif actif versionné côté serveur ; si aucun tarif n'est configuré, le checkout reste indisponible et aucun montant n'est inventé.
-5. La tentative reste `PENDING_PAYMENT`. Aucun jeton d'accès opérationnel n'est émis. Un jeton de reprise aléatoire est communiqué une seule fois ; seule son empreinte SHA-256 est stockée.
-6. Après confirmation vérifiée du prestataire, une transaction unique crée/active `Company`, `User`, l'appartenance avec le rôle `OWNER`, et l'abonnement payé. Les contraintes d'unicité doivent faire échouer proprement les collisions concurrentes.
-7. Le webhook doit être authentifié, vérifié côté serveur et idempotent. Un retour navigateur ne peut jamais activer le compte.
-8. En cas d'échec, d'expiration ou de fermeture du navigateur, la tentative peut être reprise jusqu'à son expiration. Les données de production ne sont jamais supprimées par ce flux.
+## Configuration requise avant un test sandbox
 
-## Contrat API à implémenter et tester
+Configurer uniquement dans l'environnement serveur, jamais dans le dépôt ou dans une variable `NEXT_PUBLIC_*` :
 
-- `POST /auth/signup` : créer une tentative et renvoyer l'identifiant, l'état, le tarif serveur et le jeton de reprise (une seule fois).
-- `POST /auth/signup/:id/resume` : retourner l'état et le devis serveur uniquement si le jeton de reprise fourni correspond à l'empreinte persistée.
-- `PATCH /auth/signup/:id` : modifier le nom de société, l'offre et/ou le nombre de places d'une tentative en attente, uniquement avec le jeton secret ; le prix est recalculé côté serveur et aucune session de paiement n'est créée.
-- `POST /billing/checkout` : recalculer le montant sur le serveur et créer une session chez un fournisseur configuré. En absence de fournisseur ou de tarif, répondre explicitement « non configuré ».
-- `POST /billing/webhooks/:provider` : vérifier la signature et le statut auprès du fournisseur, puis traiter l'événement de manière idempotente.
-- L'activation doit être centralisée dans un service serveur commun ; aucun contrôleur ne doit activer un abonnement en se basant sur un paramètre client ou une URL de retour.
+- `PAYDUNYA_MODE=sandbox`
+- `PAYDUNYA_ALLOW_LIVE=false`
+- `PAYDUNYA_MASTER_KEY`
+- `PAYDUNYA_PRIVATE_KEY`
+- `PAYDUNYA_TOKEN`
+- `PAYDUNYA_CALLBACK_URL`
+- `PAYDUNYA_RETURN_URL`
+- `PAYDUNYA_CANCEL_URL`
+- `NEXT_PUBLIC_API_BASE_URL` côté site, défini au moment du build pour appeler l'API publique.
 
-## Fournisseur de paiement et logos
+Les trois URL PayDunya doivent être publiques et en HTTPS. En production, le mode sandbox est refusé. Le mode live nécessite explicitement `PAYDUNYA_MODE=live` et `PAYDUNYA_ALLOW_LIVE=true`, en plus des secrets valides.
 
-La stratégie d'évaluation du fournisseur et la règle d'utilisation des logos officiels sont consignées dans [`docs/PAYMENT-PROVIDER-AND-LOGOS.md`](./PAYMENT-PROVIDER-AND-LOGOS.md). À ce stade, aucun fournisseur n'est activé : les logos ne doivent pas être présentés comme des moyens de paiement déjà disponibles. Le checkout hébergé du fournisseur est privilégié au départ afin d'afficher les marques officielles et les options réellement activées par le compte marchand.
+## Scénarios d'acceptation avant ouverture commerciale
 
-## Sécurité et intégrité
+1. Sans tarif actif, l'inscription payante et le checkout restent indisponibles ; aucune facture n'est créée.
+2. Sans configuration PayDunya, aucun paiement n'est lancé et aucune activation n'est possible.
+3. Une facture en attente est réutilisée ; des requêtes concurrentes ne doivent pas créer volontairement plusieurs factures pour la même tentative.
+4. Un callback falsifié, une référence inconnue, un statut non terminé, un montant différent ou une signature invalide ne peut pas activer un compte.
+5. Un callback réussi crée entreprise, utilisateur, rôle OWNER, appartenance et abonnement dans une seule transaction.
+6. Un callback rejoué ne crée pas un second compte ou abonnement.
+7. Un paiement confirmé pour une facture créée avant l'expiration peut être finalisé après un délai de notification ; une tentative expirée sans facture valide reste non activable.
+8. Vérifier les scénarios sandbox réels : paiement réussi, paiement annulé, paiement en attente, notification répétée et retour navigateur avant notification serveur.
+9. Vérifier le login du propriétaire créé et l'isolation multi-tenant après activation.
+10. Vérifier les parcours d'échec et de reprise sur téléphone.
 
-- Appliquer la validation DTO, une limite stricte de taille des entrées et le rate limiting.
-- Ne jamais journaliser le mot de passe, le hash du mot de passe, le jeton de reprise ou les secrets du fournisseur.
-- Stocker uniquement un hash du jeton de reprise et l'expirer côté serveur.
-- Utiliser une transaction Prisma pour les écritures de création/activation liées.
-- Ajouter des contraintes uniques pour empêcher deux inscriptions concurrentes de réclamer le même email ou slug.
-- Vérifier l'existence du rôle `OWNER` dans les données de référence avant l'activation ; ne pas supposer qu'il est présent sans vérifier le mécanisme de seed.
-- Ne pas réutiliser le modèle `Payment` opérationnel de livraison pour les paiements d'abonnement.
-- Ne pas ajouter de clés réelles, de fournisseur supposé, de tarif par défaut ou de migration exécutée contre la production.
+## Limites explicites
 
-## Tests d'acceptation requis avant toute fusion
+- Aucun compte marchand PayDunya ni secret réel n'est configuré dans le dépôt. Le fonctionnement réel du paiement n'est donc pas encore validé de bout en bout.
+- Les prix doivent être configurés dans la base par une procédure autorisée ; aucun prix n'est semé par cette fondation.
+- Le paiement couvre la première période mensuelle. Le prélèvement/renouvellement automatique n'est pas implémenté et ne doit pas être présenté comme actif.
+- Le site doit recevoir l'URL réelle de l'API au build pour activer l'inscription publique ; en son absence, le formulaire reste désactivé.
+- La migration `20261016080000_seed_owner_role` est additive et conserve tout rôle OWNER existant. Les migrations de cette branche ne doivent pas être exécutées en production sans revue et approbation explicites.
 
-1. Inscription valide : tentative créée sans créer prématurément un accès payant.
-2. Entrées invalides : erreurs de validation explicites sans écriture partielle.
-3. Slug ou email en collision : échec sûr, y compris en cas de requêtes concurrentes.
-4. Mot de passe et jeton de reprise : aucune valeur en clair persistée ou journalisée.
-5. Reprise : la configuration reste disponible après fermeture/rechargement et après échec de paiement.
-6. Prix non configuré : aucun montant inventé et aucun checkout initié.
-7. Retour navigateur « succès » sans preuve serveur : compte toujours non activé.
-8. Webhook invalide, rejoué ou dupliqué : aucun accès payé accordé à tort et aucune activation en double.
-9. Échec ou expiration : la tentative suit la politique annoncée ; aucune donnée opérationnelle existante n'est supprimée.
-10. Régression : login des utilisateurs existants, isolation multi-tenant et typecheck restent fonctionnels.
+## Gouvernance
 
-## Critères de sortie de cette étape
-
-La fondation d'inscription, de reprise et de modification est partiellement présente : schéma, migration additive, DTO, service, contrôleurs et tests ont été ajoutés. La modification reste réservée aux tentatives `PENDING_PAYMENT` non expirées et exige le jeton de reprise. Elle ne sera considérée validée qu'après vérification du typecheck, de l'exécution des tests et revue de sécurité. Le checkout, le webhook et l'activation atomique restent à implémenter.
-
-Aucun merge, déploiement, changement de tarif ou paiement réel n'est autorisé par cette étape.
+La PR #8 reste en brouillon jusqu'à la revue de sécurité et au test sandbox. Aucun merge, déploiement, changement de tarif, achat de service, paiement réel ou migration de production n'est autorisé par cette étape.
