@@ -89,7 +89,14 @@ jobs:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      - name: Installation reproductible du dépôt
+        run: npm ci
+
+      - name: Installation reproductible de l'API
+        run: npm ci --prefix apps/api
+
+      - name: Génération du client Prisma partagé
+        run: npm --prefix apps/api run prisma:generate
 
       # Les suites « reality » appliquent elles-mêmes toutes les migrations à
       # partir de zéro : un pré-application ici serait redondant et masquerait
