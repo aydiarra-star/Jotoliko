@@ -110,6 +110,24 @@ describe("BillingService — PayDunya checkout safety", () => {
     expect(prisma.billingPayment.update).not.toHaveBeenCalled();
   });
 
+  it("does not return a checkout URL when the provider invoice cannot be persisted", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("PAYDUNYA_CALLBACK_URL", "https://api.example.com/billing/paydunya/callback");
+    vi.stubEnv("PAYDUNYA_RETURN_URL", "https://example.com/inscription/retour");
+    vi.stubEnv("PAYDUNYA_CANCEL_URL", "https://example.com/inscription/annulee");
+    const { service, prisma, paydunya } = makeService();
+    prisma.billingPayment.update.mockRejectedValueOnce(new Error("database unavailable"));
+
+    await expect(service.createSignupCheckout("attempt-1", "a".repeat(64)))
+      .rejects.toThrow(/Aucun lien n'a été communiqué/);
+
+    expect(paydunya.createInvoice).toHaveBeenCalledOnce();
+    expect(prisma.billingPayment.updateMany).toHaveBeenCalledWith({
+      where: { id: "payment-1", status: "PENDING", providerReference: null },
+      data: { status: "FAILED" },
+    });
+  });
+
   it("does not start sandbox checkout in production", async () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("PAYDUNYA_MODE", "sandbox");
