@@ -91,64 +91,108 @@ export class BillingService {
       throw new ServiceUnavailableException({ code: "PRICE_NOT_CONFIGURED", message: "Le tarif choisi n'est plus actif. Aucun paiement n'a été lancé." });
     }
 
-    const existing = await this.prisma.billingPayment.findFirst({
-      where: { signupAttemptId: attempt.id, provider: PROVIDER, status: "PENDING", checkoutUrl: { not: null } },
+    let existing = await this.prisma.billingPayment.findFirst({
+      where: { signupAttemptId: attempt.id, provider: PROVIDER },
       orderBy: { createdAt: "desc" },
-      select: { checkoutUrl: true, amountXof: true, providerReference: true },
+      select: { id: true, status: true, checkoutUrl: true, amountXof: true, providerReference: true },
     });
-    if (existing?.checkoutUrl && existing.amountXof === activePrice.unitPriceXof * attempt.seatCount) {
-      return {
-        signupAttemptId: attempt.id,
-        status: "PENDING_PAYMENT",
-        checkoutUrl: existing.checkoutUrl,
-        amountXof: existing.amountXof,
-        currency: "XOF",
-        provider: PROVIDER,
-        message: "Facture en attente réutilisée. Le compte sera activé uniquement après confirmation du paiement par PayDunya.",
-      };
+    const amountXof = activePrice.unitPriceXof * attempt.seatCount;
+    if (existing?.status === "PENDING") {
+      if (existing.checkoutUrl && existing.amountXof === amountXof) {
+        return {
+          signupAttemptId: attempt.id,
+          status: "PENDING_PAYMENT",
+          checkoutUrl: existing.checkoutUrl,
+          amountXof: existing.amountXof,
+          currency: "XOF",
+          provider: PROVIDER,
+          message: "Facture en attente réutilisée. Le compte sera activé uniquement après confirmation du paiement par PayDunya.",
+        };
+      }
+      throw new ConflictException({
+        code: "CHECKOUT_CREATION_IN_PROGRESS",
+        message: "Une facture est en cours de préparation. Réessayez dans quelques secondes.",
+      });
+    }
+
+    // Reserve the one checkout slot BEFORE calling the provider. A deterministic
+    // unique idempotency key prevents concurrent requests creating two invoices.
+    let paymentId: string;
+    if (existing?.status === "FAILED") {
+      const reservation = await this.prisma.billingPayment.update({
+        where: { id: existing.id },
+        data: {
+          status: "PENDING",
+          amountXof,
+          currency: "XOF",
+          providerReference: null,
+          checkoutUrl: null,
+          rawEventHash: null,
+          paidAt: null,
+        },
+        select: { id: true },
+      });
+      paymentId = reservation.id;
+    } else if (!existing) {
+      try {
+        const reservation = await this.prisma.billingPayment.create({
+          data: {
+            signupAttemptId: attempt.id,
+            provider: PROVIDER,
+            amountXof,
+            currency: "XOF",
+            status: "PENDING",
+            idempotencyKey: `paydunya-signup-${attempt.id}`,
+          },
+          select: { id: true },
+        });
+        paymentId = reservation.id;
+      } catch {
+        throw new ConflictException({
+          code: "CHECKOUT_CREATION_IN_PROGRESS",
+          message: "Une facture vient d'être préparée par une autre requête. Rechargez l'inscription et réessayez.",
+        });
+      }
+    } else {
+      throw new ConflictException({
+        code: "CHECKOUT_NOT_RETRYABLE",
+        message: "Cette tentative de paiement doit être vérifiée avant toute nouvelle facture.",
+      });
     }
 
     const callbackUrl = requiredHttpsUrl("PAYDUNYA_CALLBACK_URL");
     const returnUrl = requiredHttpsUrl("PAYDUNYA_RETURN_URL");
     const cancelUrl = requiredHttpsUrl("PAYDUNYA_CANCEL_URL");
-    const invoice = await this.paydunya.createInvoice({
-      amountXof: activePrice.unitPriceXof * attempt.seatCount,
-      description: `Jotoliko ${activePrice.code} — ${attempt.seatCount} compte(s), période mensuelle`,
-      customerName: `${attempt.ownerFirstName} ${attempt.ownerLastName}`.trim(),
-      customerEmail: attempt.ownerEmail,
-      callbackUrl,
-      returnUrl,
-      cancelUrl,
-      reference: attempt.id,
-    });
-
+    let invoice: { token: string; checkoutUrl: string };
     try {
-      await this.prisma.billingPayment.create({
-        data: {
-          signupAttemptId: attempt.id,
-          provider: PROVIDER,
-          providerReference: invoice.token,
-          checkoutUrl: invoice.checkoutUrl,
-          amountXof: activePrice.unitPriceXof * attempt.seatCount,
-          currency: "XOF",
-          status: "PENDING",
-          idempotencyKey: `paydunya-signup-${attempt.id}-${invoice.token}`,
-        },
+      invoice = await this.paydunya.createInvoice({
+        amountXof,
+        description: `Jotoliko ${activePrice.code} — ${attempt.seatCount} compte(s), période mensuelle`,
+        customerName: `${attempt.ownerFirstName} ${attempt.ownerLastName}`.trim(),
+        customerEmail: attempt.ownerEmail,
+        callbackUrl,
+        returnUrl,
+        cancelUrl,
+        reference: attempt.id,
       });
-    } catch {
-      // A provider invoice may already exist if two requests raced. Do not expose
-      // its token or provider response; let the user resume through a fresh lookup.
-      throw new ConflictException({
-        code: "CHECKOUT_CREATED_RETRY_RESUME",
-        message: "La facture a été créée mais sa sauvegarde doit être reprise. Réessayez depuis votre inscription.",
+    } catch (error) {
+      await this.prisma.billingPayment.update({
+        where: { id: paymentId },
+        data: { status: "FAILED" },
       });
+      throw error;
     }
+
+    await this.prisma.billingPayment.update({
+      where: { id: paymentId },
+      data: { providerReference: invoice.token, checkoutUrl: invoice.checkoutUrl },
+    });
 
     return {
       signupAttemptId: attempt.id,
       status: "PENDING_PAYMENT",
       checkoutUrl: invoice.checkoutUrl,
-      amountXof: activePrice.unitPriceXof * attempt.seatCount,
+      amountXof,
       currency: "XOF",
       provider: PROVIDER,
       message: "Ouvrez la page PayDunya pour payer. Le compte ne sera activé qu'après confirmation serveur.",
