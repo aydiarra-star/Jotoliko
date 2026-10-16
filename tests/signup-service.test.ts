@@ -68,7 +68,7 @@ describe("SignupService", () => {
     expect(call.data.resumeTokenHash).not.toBe(result.resumeToken);
     expect(result.status).toBe("PENDING_PAYMENT");
     expect(result.pricing.monthlyAmountXof).toBe(15000);
-    expect(result.nextStep).toBe("PAYMENT_PROVIDER_NOT_CONFIGURED");
+    expect(result.nextStep).toBe("START_CHECKOUT");
     expect(prisma.user.findUnique).toHaveBeenCalledOnce();
   });
 
@@ -135,7 +135,7 @@ describe("SignupService", () => {
       }),
     }));
     expect(result.pricing.monthlyAmountXof).toBe(20000);
-    expect(result.nextStep).toBe("PAYMENT_PROVIDER_NOT_CONFIGURED");
+    expect(result.nextStep).toBe("START_CHECKOUT");
   });
 
   it("verrouille les paramètres dès qu'une facture est en attente", async () => {
@@ -196,6 +196,6 @@ describe("SignupService", () => {
       },
     }));
     expect(result.pricing.monthlyAmountXof).toBe(15000);
-    expect(result.nextStep).toBe("PAYMENT_PROVIDER_NOT_CONFIGURED");
+    expect(result.nextStep).toBe("START_CHECKOUT");
   });
 });
