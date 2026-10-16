@@ -117,3 +117,57 @@ export function matchesExpectedCheckout({
   if (event.currency !== expectedCurrency || expectedCurrency !== "XOF") return false;
   return true;
 }
+
+
+/**
+ * Construit une clé stable par abonnement et période facturée.
+ * La période exacte est utilisée (pas seulement le mois civil), car les
+ * abonnements peuvent avoir commencé n'importe quel jour du mois.
+ */
+export function buildRenewalIdempotencyKey({ subscriptionId, periodStart, periodEnd }) {
+  if (typeof subscriptionId !== "string" || subscriptionId.trim() === "") {
+    throw new TypeError("subscriptionId doit être une chaîne non vide.");
+  }
+  const start = new Date(periodStart);
+  const end = new Date(periodEnd);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+    throw new RangeError("La période de renouvellement doit contenir deux dates valides et croissantes.");
+  }
+  return `subscription:${subscriptionId.trim()}:renewal:${start.toISOString()}:${end.toISOString()}`;
+}
+
+/**
+ * Politique de décision pure pour le renouvellement.
+ * Le mode automatique est refusé par défaut et exige des confirmations explicites
+ * de capacité fournisseur, consentement client et idempotence fournisseur.
+ * Une tentative au résultat inconnu doit être rapprochée, jamais relancée à l'aveugle.
+ */
+export function decideRenewalAction({
+  status,
+  cancelAtPeriodEnd = false,
+  currentPeriodEnd,
+  now = new Date(),
+  attemptStatus = "NONE",
+  providerRecurrenceConfirmed = false,
+  customerConsentRecorded = false,
+  providerIdempotencySupported = false,
+}) {
+  if (cancelAtPeriodEnd || status === "CANCELLED" || status === "EXPIRED" || status === "SUSPENDED") {
+    return "SKIP";
+  }
+  const end = currentPeriodEnd ? new Date(currentPeriodEnd) : null;
+  const clock = new Date(now);
+  if (!end || Number.isNaN(end.getTime()) || Number.isNaN(clock.getTime())) return "MANUAL_REVIEW";
+  if (end > clock) return "NOT_DUE";
+  if (["PENDING", "PROCESSING", "UNKNOWN"].includes(attemptStatus)) return "RECONCILE_EXISTING_ATTEMPT";
+  if (attemptStatus === "CONFIRMED") return "PERIOD_ALREADY_PAID";
+  if (status !== "ACTIVE" && status !== "PAST_DUE" && status !== "GRACE_PERIOD") return "MANUAL_REVIEW";
+  if (
+    providerRecurrenceConfirmed === true &&
+    customerConsentRecorded === true &&
+    providerIdempotencySupported === true
+  ) {
+    return "ATTEMPT_RECURRING_CHARGE";
+  }
+  return "CREATE_HOSTED_CHECKOUT";
+}
