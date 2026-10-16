@@ -42,7 +42,7 @@ La documentation consultée confirme des flux de paiement et de vérification de
 1. Configurer `PAYDUNYA_MODE=sandbox`, `PAYDUNYA_MASTER_KEY`, `PAYDUNYA_PRIVATE_KEY`, `PAYDUNYA_TOKEN` et les trois URLs HTTPS `PAYDUNYA_CALLBACK_URL`, `PAYDUNYA_RETURN_URL`, `PAYDUNYA_CANCEL_URL` dans l'environnement serveur seulement. Le callback doit viser `/billing/paydunya/callback`.
 2. Exécuter la migration additive `20261016070000_billing_checkout_url` dans un environnement de test jetable, puis générer le client Prisma et exécuter les tests.
 3. Tester avec un compte marchand sandbox : succès, attente, annulation, échec, callback répété, montant incorrect, devise incorrecte, référence incorrecte, jeton inconnu, inscription expirée et e-mail déjà utilisé.
-4. Vérifier qu'un rôle `OWNER` est présent dans les données de référence avant de tester l'activation. Si ce rôle manque, la transaction d'activation est annulée.
+4. La migration `20261016080000_seed_owner_role` insère le rôle `OWNER` s'il manque, sans remplacer un rôle existant. Vérifier cette migration sur PostgreSQL jetable avant déploiement.
 5. Ne passer en mode réel qu'après validation des tests, compte marchand approuvé et configuration des secrets côté hébergeur. Le mode réel exige `PAYDUNYA_ALLOW_LIVE=true` en plus de `PAYDUNYA_MODE=live`.
 6. Le premier paiement ouvre une période d'un mois. **Le renouvellement automatique n'est pas implémenté** : ne pas annoncer un prélèvement récurrent sans capacité contractuelle et technique confirmée.
 7. Les logos restent ceux du checkout PayDunya hébergé. Ne montrer aucune méthode comme disponible sur le site Jotoliko sans preuve qu'elle est active sur le compte marchand.
