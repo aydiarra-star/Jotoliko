@@ -16,17 +16,18 @@ Cette fondation est implémentée sur `feat/self-service-signup-foundation` et p
 
 ## Vérifications CI observées
 
-Sur le commit de tête vérifié lors de l'audit, les workflows suivants sont terminés avec succès :
+Vérification du commit `fa3018ab715e5616f58a52a11de7ee459d6c103c` (16 octobre 2026) : les 8 contrôles GitHub Actions visibles sont terminés avec succès :
 
-- Tests du client PayDunya.
-- Tests de facturation et de sécurité du checkout.
-- Tests du service d'inscription et de l'activation après paiement.
-- Build de la page d'inscription.
-- Typecheck et build de l'API.
+- Build et validation du site statique.
+- Tests du cœur de facturation.
 - Test des migrations sur PostgreSQL jetable.
-- Validation de configuration de déploiement.
+- Tests du service d'inscription et de l'activation après paiement.
+- Validation Compose et build de l'image API.
+- Tests du client PayDunya.
+- Typecheck de l'API.
+- Une seconde exécution du contrôle PayDunya, déclenchée séparément.
 
-Ces tests ne remplacent pas un test d'intégration avec le compte marchand PayDunya réel ou sandbox.
+Ces résultats établissent que la version passe les contrôles automatisés listés ci-dessus. Ils ne remplacent pas un test d'intégration avec un compte marchand PayDunya sandbox ni une vérification complète du parcours utilisateur en environnement déployé.
 
 ## Configuration requise avant un test sandbox
 
