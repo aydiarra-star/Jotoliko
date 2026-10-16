@@ -131,7 +131,7 @@ export class SignupService {
           seatCount: input.seatCount,
           monthlyAmountXof: price.unitPriceXof * input.seatCount,
         },
-        nextStep: "PAYMENT_PROVIDER_NOT_CONFIGURED",
+        nextStep: "START_CHECKOUT",
         message: "Inscription enregistrée. Aucun compte opérationnel n'est activé avant confirmation serveur du paiement.",
       };
     } catch (error) {
@@ -283,7 +283,7 @@ export class SignupService {
         seatCount,
         monthlyAmountXof: price.unitPriceXof * seatCount,
       },
-      nextStep: "PAYMENT_PROVIDER_NOT_CONFIGURED" as const,
+      nextStep: "START_CHECKOUT" as const,
       message: "Configuration mise à jour. Aucun paiement ni compte opérationnel n'a été créé.",
     };
   }
@@ -344,8 +344,8 @@ export class SignupService {
         monthlyAmountXof: attempt.planPrice.unitPriceXof * attempt.seatCount,
       },
       nextStep: attempt.status === "PENDING_PAYMENT"
-        ? "PAYMENT_PROVIDER_NOT_CONFIGURED"
-        : "CONTACT_SUPPORT",
+        ? "START_CHECKOUT"
+        : attempt.status === "ACTIVE" ? "LOGIN" : "CONTACT_SUPPORT",
     };
   }
 
