@@ -5,10 +5,16 @@ name: Deploy site to GitHub Pages
 # site publié pouvait rester figé sur une version ancienne. Il est restauré ici.
 
 on:
-  push:
+  pull_request:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publier sur GitHub Pages après validation complète"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -31,6 +37,15 @@ jobs:
 
       - run: npm ci
 
+      # Le typecheck du dépôt couvre aussi apps/api. Installer ses dépendances
+      # et générer le client Prisma avant les contrôles évite les imports
+      # NestJS/Prisma manquants qui bloquaient la publication après fusion.
+      - name: Installation reproductible de l'API
+        run: npm ci --prefix apps/api
+
+      - name: Génération du client Prisma partagé
+        run: npm --prefix apps/api run prisma:generate
+
       - name: Vérifications avant publication
         run: |
           npm run typecheck
@@ -52,6 +67,7 @@ jobs:
           test -f out/index.html
 
       - name: Publication sur la branche gh-pages
+        if: github.event_name == 'workflow_dispatch' && inputs.publish == true
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
