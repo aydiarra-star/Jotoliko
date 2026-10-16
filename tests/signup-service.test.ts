@@ -121,13 +121,17 @@ describe("SignupService", () => {
 
     const result = await service.updatePending("attempt-uuid", token, { seatCount: 4, resumeToken: token });
 
-    expect(prisma.signupAttempt.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+    expect(prisma.signupAttempt.update).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         id: "attempt-uuid",
         status: "PENDING_PAYMENT",
+        expiresAt: expect.objectContaining({ gt: expect.any(Date) }),
         resumeTokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       }),
-      data: expect.objectContaining({ seatCount: 4, planPriceId: "new-price" }),
+      data: expect.objectContaining({
+        seatCount: 4,
+        planPrice: { connect: { id: "new-price" } },
+      }),
     }));
     expect(result.pricing.monthlyAmountXof).toBe(20000);
     expect(result.nextStep).toBe("PAYMENT_PROVIDER_NOT_CONFIGURED");
@@ -141,7 +145,7 @@ describe("SignupService", () => {
       seatCount: 4,
       resumeToken: "c".repeat(64),
     })).rejects.toMatchObject({ response: { code: "SIGNUP_RESUME_INVALID" } });
-    expect(prisma.signupAttempt.updateMany).not.toHaveBeenCalled();
+    expect(prisma.signupAttempt.update).not.toHaveBeenCalled();
   });
 
   it("renvoie l'état et le tarif lors d'une reprise autorisée", async () => {
