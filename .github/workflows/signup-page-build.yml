@@ -47,7 +47,13 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Typecheck site
+      # Root tests import the signup service from the API. Install its own
+      # dependencies and generate its Prisma client before root TypeScript checks.
+      - name: Install API dependencies
+        run: npm ci --prefix apps/api
+      - name: Generate API Prisma client
+        run: npm run api:prisma:generate
+      - name: Typecheck site and imported signup service
         run: npm run typecheck
       - name: Build static site
         run: npm run build
