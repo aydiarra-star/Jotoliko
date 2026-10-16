@@ -1,0 +1,39 @@
+name: Jotoliko billing core tests
+
+on:
+  push:
+    branches:
+      - "feat/monthly-self-service-subscriptions"
+    paths:
+      - "apps/api/src/billing/**"
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**"
+      - ".github/workflows/billing-core-tests.yml"
+  pull_request:
+    paths:
+      - "apps/api/src/billing/**"
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**"
+      - ".github/workflows/billing-core-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  billing-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run isolated billing domain tests
+        run: node --test apps/api/src/billing/billing-core.test.mjs
+      - name: Validate Prisma schema
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/jotoliko_ci?schema=public
+        run: npx --yes prisma@6.19.3 validate --schema prisma/schema.prisma
