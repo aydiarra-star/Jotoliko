@@ -1,9 +1,284 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  ServiceUnavailableException,
+  UnprocessableEntityException,
+} from "@nestjs/common";
+import { createHash } from "node:crypto";
 import { PrismaService } from "../prisma.service";
+import { PayDunyaClient } from "./paydunya.client";
+
+const PROVIDER = "PAYDUNYA";
+
+function hashToken(token: string): string {
+  return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+function requiredHttpsUrl(name: string): string {
+  const raw = process.env[name]?.trim();
+  if (!raw) throw new ServiceUnavailableException(`Configuration ${name} manquante : aucun paiement n'a été lancé.`);
+  let parsed: URL;
+  try { parsed = new URL(raw); } catch {
+    throw new ServiceUnavailableException(`Configuration ${name} invalide.`);
+  }
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
+    throw new ServiceUnavailableException(`Configuration ${name} doit être une URL HTTPS publique.`);
+  }
+  return parsed.toString();
+}
+
+function addCalendarMonth(from: Date): Date {
+  const result = new Date(from);
+  const day = result.getDate();
+  result.setDate(1);
+  result.setMonth(result.getMonth() + 1);
+  const lastDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
+  result.setDate(Math.min(day, lastDay));
+  return result;
+}
 
 @Injectable()
 export class BillingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly paydunya: PayDunyaClient,
+  ) {}
+
+  /**
+   * Starts or resumes a hosted invoice for a secret-protected signup attempt.
+   * The client cannot choose the amount, currency, customer, or provider URL.
+   */
+  async createSignupCheckout(signupAttemptId: string, resumeToken: string) {
+    const now = new Date();
+    const attempt = await this.prisma.signupAttempt.findFirst({
+      where: { id: signupAttemptId, resumeTokenHash: hashToken(resumeToken) },
+      include: { planPrice: true },
+    });
+    if (!attempt) throw new ConflictException({ code: "SIGNUP_RESUME_INVALID", message: "Lien de reprise invalide ou indisponible." });
+    if (attempt.status !== "PENDING_PAYMENT") {
+      throw new ConflictException({ code: "SIGNUP_NOT_PAYABLE", message: "Cette inscription n'est plus payable." });
+    }
+    if (attempt.expiresAt <= now) {
+      await this.prisma.signupAttempt.updateMany({
+        where: { id: attempt.id, status: "PENDING_PAYMENT", expiresAt: { lte: now } },
+        data: { status: "EXPIRED" },
+      });
+      throw new ConflictException({ code: "SIGNUP_EXPIRED", message: "Cette inscription a expiré. Recommencez le parcours." });
+    }
+
+    const activePrice = await this.prisma.planPrice.findFirst({
+      where: {
+        id: attempt.planPriceId,
+        isActive: true,
+        currency: "XOF",
+        effectiveFrom: { lte: now },
+        OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }],
+      },
+      select: { id: true, code: true, version: true, currency: true, unitPriceXof: true },
+    });
+    if (!activePrice || !Number.isSafeInteger(activePrice.unitPriceXof * attempt.seatCount)) {
+      throw new ServiceUnavailableException({ code: "PRICE_NOT_CONFIGURED", message: "Le tarif choisi n'est plus actif. Aucun paiement n'a été lancé." });
+    }
+
+    const existing = await this.prisma.billingPayment.findFirst({
+      where: { signupAttemptId: attempt.id, provider: PROVIDER, status: "PENDING", checkoutUrl: { not: null } },
+      orderBy: { createdAt: "desc" },
+      select: { checkoutUrl: true, amountXof: true, providerReference: true },
+    });
+    if (existing?.checkoutUrl && existing.amountXof === activePrice.unitPriceXof * attempt.seatCount) {
+      return {
+        signupAttemptId: attempt.id,
+        status: "PENDING_PAYMENT",
+        checkoutUrl: existing.checkoutUrl,
+        amountXof: existing.amountXof,
+        currency: "XOF",
+        provider: PROVIDER,
+        message: "Facture en attente réutilisée. Le compte sera activé uniquement après confirmation du paiement par PayDunya.",
+      };
+    }
+
+    const callbackUrl = requiredHttpsUrl("PAYDUNYA_CALLBACK_URL");
+    const returnUrl = requiredHttpsUrl("PAYDUNYA_RETURN_URL");
+    const cancelUrl = requiredHttpsUrl("PAYDUNYA_CANCEL_URL");
+    const invoice = await this.paydunya.createInvoice({
+      amountXof: activePrice.unitPriceXof * attempt.seatCount,
+      description: `Jotoliko ${activePrice.code} — ${attempt.seatCount} compte(s), période mensuelle`,
+      customerName: `${attempt.ownerFirstName} ${attempt.ownerLastName}`.trim(),
+      customerEmail: attempt.ownerEmail,
+      callbackUrl,
+      returnUrl,
+      cancelUrl,
+      reference: attempt.id,
+    });
+
+    try {
+      await this.prisma.billingPayment.create({
+        data: {
+          signupAttemptId: attempt.id,
+          provider: PROVIDER,
+          providerReference: invoice.token,
+          checkoutUrl: invoice.checkoutUrl,
+          amountXof: activePrice.unitPriceXof * attempt.seatCount,
+          currency: "XOF",
+          status: "PENDING",
+          idempotencyKey: `paydunya-signup-${attempt.id}-${invoice.token}`,
+        },
+      });
+    } catch {
+      // A provider invoice may already exist if two requests raced. Do not expose
+      // its token or provider response; let the user resume through a fresh lookup.
+      throw new ConflictException({
+        code: "CHECKOUT_CREATED_RETRY_RESUME",
+        message: "La facture a été créée mais sa sauvegarde doit être reprise. Réessayez depuis votre inscription.",
+      });
+    }
+
+    return {
+      signupAttemptId: attempt.id,
+      status: "PENDING_PAYMENT",
+      checkoutUrl: invoice.checkoutUrl,
+      amountXof: activePrice.unitPriceXof * attempt.seatCount,
+      currency: "XOF",
+      provider: PROVIDER,
+      message: "Ouvrez la page PayDunya pour payer. Le compte ne sera activé qu'après confirmation serveur.",
+    };
+  }
+
+  /**
+   * A callback token is not proof of payment. Confirm directly with PayDunya,
+   * match the stored invoice, exact amount/currency and signup reference, then
+   * activate all account records in one transaction. Repeated callbacks are safe.
+   */
+  async processPayDunyaCallback(invoiceToken: string) {
+    const payment = await this.prisma.billingPayment.findFirst({
+      where: { provider: PROVIDER, providerReference: invoiceToken },
+      include: { signupAttempt: true },
+    });
+    if (!payment || !payment.signupAttemptId || !payment.signupAttempt) {
+      throw new UnprocessableEntityException("Facture inconnue.");
+    }
+    if (payment.status === "CONFIRMED" && payment.signupAttempt.status === "ACTIVE") {
+      return { received: true, status: "ACTIVE", idempotent: true };
+    }
+
+    const verified = await this.paydunya.confirmInvoice(invoiceToken);
+    if (verified.status !== "completed") {
+      return { received: true, status: verified.status === "failed" || verified.status === "cancelled" ? "PAYMENT_NOT_COMPLETED" : "PENDING" };
+    }
+    if (
+      verified.amountXof !== payment.amountXof ||
+      verified.currency?.toUpperCase() !== "XOF" ||
+      verified.reference !== payment.signupAttemptId
+    ) {
+      throw new UnprocessableEntityException("Les données de confirmation ne correspondent pas à la facture enregistrée.");
+    }
+
+    const now = new Date();
+    const eventHash = createHash("sha256")
+      .update([invoiceToken, verified.status, String(verified.amountXof), verified.currency, verified.reference].join("|"))
+      .digest("hex");
+
+    return this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.signupAttempt.updateMany({
+        where: {
+          id: payment.signupAttemptId!,
+          status: "PENDING_PAYMENT",
+          expiresAt: { gt: now },
+        },
+        data: { status: "ACTIVE" },
+      });
+
+      if (claimed.count === 0) {
+        const current = await tx.signupAttempt.findUnique({
+          where: { id: payment.signupAttemptId! },
+          select: { status: true },
+        });
+        const currentPayment = await tx.billingPayment.findUnique({
+          where: { id: payment.id },
+          select: { status: true },
+        });
+        if (current?.status === "ACTIVE" && currentPayment?.status === "CONFIRMED") {
+          return { received: true, status: "ACTIVE", idempotent: true };
+        }
+        throw new ConflictException({
+          code: "SIGNUP_NOT_ACTIVATABLE",
+          message: "Le paiement est confirmé, mais l'inscription a expiré ou changé d'état. Une vérification manuelle est nécessaire.",
+        });
+      }
+
+      const existingUser = await tx.user.findUnique({
+        where: { email: payment.signupAttempt!.ownerEmail },
+        select: { id: true },
+      });
+      if (existingUser) {
+        throw new ConflictException({
+          code: "EMAIL_ALREADY_REGISTERED",
+          message: "Cette adresse a été utilisée entre-temps. L'activation automatique est suspendue pour éviter un compte en double.",
+        });
+      }
+      const ownerRole = await tx.role.findUnique({ where: { code: "OWNER" }, select: { id: true } });
+      if (!ownerRole) {
+        throw new ServiceUnavailableException("Le rôle OWNER n'est pas configuré. L'activation a été annulée sans créer de compte.");
+      }
+
+      const attempt = payment.signupAttempt!;
+      const company = await tx.company.create({
+        data: {
+          name: attempt.companyName,
+          slug: attempt.companySlug,
+          country: "SN",
+          currency: "XOF",
+          timezone: "Africa/Dakar",
+        },
+        select: { id: true },
+      });
+      const user = await tx.user.create({
+        data: {
+          email: attempt.ownerEmail,
+          firstName: attempt.ownerFirstName,
+          lastName: attempt.ownerLastName,
+          passwordHash: attempt.passwordHash,
+          passwordSalt: attempt.passwordSalt,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      await tx.membership.create({
+        data: { userId: user.id, companyId: company.id, roleId: ownerRole.id },
+      });
+      const periodEnd = addCalendarMonth(now);
+      const subscription = await tx.subscription.create({
+        data: {
+          companyId: company.id,
+          planPriceId: attempt.planPriceId,
+          seatLimit: attempt.seatCount,
+          status: "ACTIVE",
+          currentPeriodStart: now,
+          currentPeriodEnd: periodEnd,
+          provider: PROVIDER,
+        },
+        select: { id: true },
+      });
+      await tx.billingPayment.update({
+        where: { id: payment.id },
+        data: {
+          subscriptionId: subscription.id,
+          status: "CONFIRMED",
+          paidAt: now,
+          rawEventHash: eventHash,
+        },
+      });
+      return {
+        received: true,
+        status: "ACTIVE",
+        idempotent: false,
+        companyId: company.id,
+        subscriptionId: subscription.id,
+        currentPeriodEnd: periodEnd,
+      };
+    });
+  }
 
   /**
    * Read-only estimate from the current server-configured price list.
@@ -17,63 +292,29 @@ export class BillingService {
         message: "Le nombre de livreurs doit être un entier entre 1 et 500.",
       });
     }
-
     const prices = await this.prisma.planPrice.findMany({
-      where: {
-        isActive: true,
-        effectiveFrom: { lte: now },
-        OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }],
-        currency: "XOF",
-      },
+      where: { isActive: true, effectiveFrom: { lte: now }, OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }], currency: "XOF" },
       orderBy: [{ code: "asc" }, { version: "desc" }],
-      select: {
-        id: true,
-        code: true,
-        version: true,
-        currency: true,
-        unitPriceXof: true,
-        effectiveFrom: true,
-        effectiveUntil: true,
-      },
+      select: { id: true, code: true, version: true, currency: true, unitPriceXof: true, effectiveFrom: true, effectiveUntil: true },
     });
-
     return {
       configured: prices.length > 0,
       billingPeriod: "MONTH",
       seatCount,
       currency: "XOF",
-      quotes: prices.map((price) => ({
-        ...price,
-        monthlyAmountXof: price.unitPriceXof * seatCount,
-      })),
+      quotes: prices.map((price) => ({ ...price, monthlyAmountXof: price.unitPriceXof * seatCount })),
       message: prices.length > 0 ? undefined : "PRICE_NOT_CONFIGURED",
       note: "Estimation indicative calculée à partir des tarifs actifs côté serveur. Aucun paiement ni abonnement n'est créé.",
     };
   }
 
-  /**
-   * Expose only explicitly configured, currently effective prices.
-   * No default tariff is inferred from examples or environment variables.
-   */
+  /** Expose only explicitly configured, currently effective prices. */
   async listPublicPrices(now = new Date()) {
     const prices = await this.prisma.planPrice.findMany({
-      where: {
-        isActive: true,
-        effectiveFrom: { lte: now },
-        OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }],
-      },
+      where: { isActive: true, effectiveFrom: { lte: now }, OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }] },
       orderBy: [{ unitPriceXof: "asc" }, { version: "desc" }],
-      select: {
-        id: true,
-        code: true,
-        version: true,
-        currency: true,
-        unitPriceXof: true,
-        effectiveFrom: true,
-        effectiveUntil: true,
-      },
+      select: { id: true, code: true, version: true, currency: true, unitPriceXof: true, effectiveFrom: true, effectiveUntil: true },
     });
-
     return {
       configured: prices.length > 0,
       billingPeriod: "MONTH",
@@ -90,46 +331,20 @@ export class BillingService {
       where: { companyId },
       orderBy: { createdAt: "desc" },
       select: {
-        id: true,
-        seatLimit: true,
-        status: true,
-        currentPeriodStart: true,
-        currentPeriodEnd: true,
-        gracePeriodEndsAt: true,
-        cancelAtPeriodEnd: true,
+        id: true, seatLimit: true, status: true, currentPeriodStart: true,
+        currentPeriodEnd: true, gracePeriodEndsAt: true, cancelAtPeriodEnd: true,
         createdAt: true,
-        planPrice: {
-          select: {
-            code: true,
-            version: true,
-            currency: true,
-            unitPriceXof: true,
-          },
-        },
+        planPrice: { select: { code: true, version: true, currency: true, unitPriceXof: true } },
       },
     });
-
-    if (!subscription) {
-      return { configured: false, subscription: null, message: "NO_SUBSCRIPTION" };
-    }
-
+    if (!subscription) return { configured: false, subscription: null, message: "NO_SUBSCRIPTION" };
     const now = new Date();
-    const activePeriodIsValid =
-      subscription.currentPeriodEnd !== null && subscription.currentPeriodEnd > now;
-    const graceIsActive =
-      subscription.status === "GRACE_PERIOD" &&
-      subscription.gracePeriodEndsAt !== null &&
-      subscription.gracePeriodEndsAt > now;
-    const paidAccessExpected =
-      (subscription.status === "ACTIVE" && activePeriodIsValid) || graceIsActive;
-
+    const activePeriodIsValid = subscription.currentPeriodEnd !== null && subscription.currentPeriodEnd > now;
+    const graceIsActive = subscription.status === "GRACE_PERIOD" && subscription.gracePeriodEndsAt !== null && subscription.gracePeriodEndsAt > now;
+    const paidAccessExpected = (subscription.status === "ACTIVE" && activePeriodIsValid) || graceIsActive;
     return {
       configured: true,
-      subscription: {
-        ...subscription,
-        monthlyAmountXof: subscription.planPrice.unitPriceXof * subscription.seatLimit,
-        paidAccessExpected,
-      },
+      subscription: { ...subscription, monthlyAmountXof: subscription.planPrice.unitPriceXof * subscription.seatLimit, paidAccessExpected },
     };
   }
 }
