@@ -194,4 +194,53 @@ describe("BillingService — PayDunya checkout safety", () => {
     expect(prisma.billingPayment.create).not.toHaveBeenCalled();
   });
 
+
+  it("does not retry while PayDunya still reports the previous invoice as pending", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("PAYDUNYA_CALLBACK_URL", "https://api.example.com/billing/paydunya/callback");
+    vi.stubEnv("PAYDUNYA_RETURN_URL", "https://example.com/inscription/retour");
+    vi.stubEnv("PAYDUNYA_CANCEL_URL", "https://example.com/inscription/annulee");
+    const { service, prisma, paydunya } = makeService();
+    prisma.billingPayment.findFirst.mockResolvedValue({
+      id: "payment-previous",
+      status: "FAILED",
+      checkoutUrl: null,
+      amountXof: 15000,
+      providerReference: "old_invoice",
+    });
+    paydunya.confirmInvoice.mockResolvedValue({
+      status: "pending",
+      amountXof: 15000,
+      currency: "XOF",
+      reference: "attempt-1",
+    });
+
+    await expect(service.createSignupCheckout("attempt-1", "a".repeat(64)))
+      .rejects.toMatchObject({ response: expect.objectContaining({ code: "CHECKOUT_NOT_TERMINAL" }) });
+
+    expect(paydunya.createInvoice).not.toHaveBeenCalled();
+    expect(prisma.billingPayment.create).not.toHaveBeenCalled();
+  });
+
+  it("does not create another invoice when reconciliation with PayDunya is unavailable", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("PAYDUNYA_CALLBACK_URL", "https://api.example.com/billing/paydunya/callback");
+    vi.stubEnv("PAYDUNYA_RETURN_URL", "https://example.com/inscription/retour");
+    vi.stubEnv("PAYDUNYA_CANCEL_URL", "https://example.com/inscription/annulee");
+    const { service, prisma, paydunya } = makeService();
+    prisma.billingPayment.findFirst.mockResolvedValue({
+      id: "payment-previous",
+      status: "FAILED",
+      checkoutUrl: null,
+      amountXof: 15000,
+      providerReference: "old_invoice",
+    });
+    paydunya.confirmInvoice.mockRejectedValue(new Error("provider timeout"));
+
+    await expect(service.createSignupCheckout("attempt-1", "a".repeat(64)))
+      .rejects.toMatchObject({ response: expect.objectContaining({ code: "CHECKOUT_RECONCILIATION_UNAVAILABLE" }) });
+
+    expect(paydunya.createInvoice).not.toHaveBeenCalled();
+    expect(prisma.billingPayment.create).not.toHaveBeenCalled();
+  });
 });
