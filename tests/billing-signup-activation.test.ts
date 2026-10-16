@@ -127,4 +127,19 @@ describe("PayDunya signup activation", () => {
     await expect(service.processPayDunyaCallback("invoice_1234")).resolves.toMatchObject({ status: "PENDING" });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
+
+  it("refuses late activation when the signup has expired", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    const { service, tx, attempt } = setup();
+    attempt.expiresAt = new Date(Date.now() - 60_000);
+    tx.signupAttempt.updateMany.mockResolvedValue({ count: 0 });
+    tx.signupAttempt.findUnique.mockResolvedValue({ status: "PENDING_PAYMENT" });
+
+    await expect(service.processPayDunyaCallback("invoice_1234")).rejects.toThrow(/a expiré/);
+    expect(tx.signupAttempt.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ expiresAt: expect.objectContaining({ gt: expect.any(Date) }) }),
+    }));
+    expect(tx.company.create).not.toHaveBeenCalled();
+    expect(tx.user.create).not.toHaveBeenCalled();
+  });
 });
