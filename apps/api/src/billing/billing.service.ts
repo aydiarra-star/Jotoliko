@@ -154,6 +154,18 @@ export class BillingService {
           message: "La facture précédente n'est pas confirmée comme définitivement échouée ou annulée. Aucune nouvelle facture n'a été créée.",
         });
       }
+      // A terminal status alone is insufficient: ensure the provider response
+      // still identifies the exact stored invoice before permitting a retry.
+      if (
+        previousInvoice.amountXof !== existing.amountXof ||
+        (previousInvoice.currency !== null && previousInvoice.currency.toUpperCase() !== "XOF") ||
+        previousInvoice.reference !== attempt.id
+      ) {
+        throw new ConflictException({
+          code: "CHECKOUT_RECONCILIATION_MISMATCH",
+          message: "Les détails de la facture précédente ne correspondent pas à l'inscription. Aucune nouvelle facture n'a été créée.",
+        });
+      }
       terminalFailedPaymentId = existing.id;
     }
 
