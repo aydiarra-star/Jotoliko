@@ -131,7 +131,7 @@ export class BillingService {
         });
       }
 
-      let previousInvoice: { status: string };
+      let previousInvoice: { status: string; amountXof: number | null; currency: string | null; reference: string | null };
       try {
         previousInvoice = await this.paydunya.confirmInvoice(existing.providerReference);
       } catch {
