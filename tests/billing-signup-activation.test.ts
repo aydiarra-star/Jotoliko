@@ -19,7 +19,8 @@ function setup(overrides: Record<string, unknown> = {}) {
   const payment = {
     id: "payment-1",
     signupAttemptId: attempt.id,
-    subscriptionId: null,
+    subscriptionId: "subscription-1",
+    subscription: { companyId: "company-1" },
     provider: "PAYDUNYA",
     providerReference: "invoice_1234",
     amountXof: 15000,
@@ -108,6 +109,7 @@ describe("PayDunya signup activation", () => {
 
     await expect(service.processPayDunyaCallback("invoice_1234")).resolves.toMatchObject({
       status: "ACTIVE",
+      companyId: "company-1",
       idempotent: true,
     });
     expect(paydunya.confirmInvoice).not.toHaveBeenCalled();
