@@ -168,7 +168,7 @@ export class BillingService {
     }
     if (
       verified.amountXof !== payment.amountXof ||
-      verified.currency?.toUpperCase() !== "XOF" ||
+      (verified.currency !== null && verified.currency.toUpperCase() !== "XOF") ||
       verified.reference !== payment.signupAttemptId
     ) {
       throw new UnprocessableEntityException("Les données de confirmation ne correspondent pas à la facture enregistrée.");
