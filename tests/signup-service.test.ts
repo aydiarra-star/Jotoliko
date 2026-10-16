@@ -198,4 +198,23 @@ describe("SignupService", () => {
     expect(result.pricing.monthlyAmountXof).toBe(15000);
     expect(result.nextStep).toBe("START_CHECKOUT");
   });
+  
+  it("refuse les tarifs nuls ou négatifs avant de créer une inscription", async () => {
+    for (const unitPriceXof of [0, -100]) {
+      const { service, prisma } = makeService();
+      prisma.planPrice.findFirst.mockResolvedValue({
+        id: "invalid-price",
+        code: "PRO",
+        version: 1,
+        currency: "XOF",
+        unitPriceXof,
+      });
+
+      await expect(service.create(validInput)).rejects.toMatchObject({
+        status: 503,
+        response: { code: "PRICE_NOT_CONFIGURED" },
+      });
+      expect(prisma.signupAttempt.create).not.toHaveBeenCalled();
+    }
+  });
 });
