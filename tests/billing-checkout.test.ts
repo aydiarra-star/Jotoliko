@@ -136,4 +136,26 @@ describe("BillingService — PayDunya checkout safety", () => {
     await expect(service.createSignupCheckout("attempt-1", "a".repeat(64))).rejects.toThrow(/sandbox est interdit en production/);
     expect(paydunya.createInvoice).not.toHaveBeenCalled();
   });
+  it("does not reuse an uncertain failed invoice or risk a later double charge", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("PAYDUNYA_CALLBACK_URL", "https://api.example.com/billing/paydunya/callback");
+    vi.stubEnv("PAYDUNYA_RETURN_URL", "https://example.com/inscription/retour");
+    vi.stubEnv("PAYDUNYA_CANCEL_URL", "https://example.com/inscription/annulee");
+    const { service, prisma, paydunya } = makeService();
+    prisma.billingPayment.findFirst.mockResolvedValue({
+      id: "payment-previous",
+      status: "FAILED",
+      checkoutUrl: null,
+      amountXof: 15000,
+      providerReference: null,
+    });
+
+    await expect(service.createSignupCheckout("attempt-1", "a".repeat(64)))
+      .rejects.toThrow(/Pour éviter un double débit/);
+
+    expect(paydunya.createInvoice).not.toHaveBeenCalled();
+    expect(prisma.billingPayment.updateMany).not.toHaveBeenCalled();
+    expect(prisma.billingPayment.create).not.toHaveBeenCalled();
+  });
+
 });
