@@ -36,6 +36,10 @@ Le parcours doit distinguer une tentative d'inscription persistante du compte op
 - `POST /billing/webhooks/:provider` : vérifier la signature et le statut auprès du fournisseur, puis traiter l'événement de manière idempotente.
 - L'activation doit être centralisée dans un service serveur commun ; aucun contrôleur ne doit activer un abonnement en se basant sur un paramètre client ou une URL de retour.
 
+## Fournisseur de paiement et logos
+
+La stratégie d'évaluation du fournisseur et la règle d'utilisation des logos officiels sont consignées dans [`docs/PAYMENT-PROVIDER-AND-LOGOS.md`](./PAYMENT-PROVIDER-AND-LOGOS.md). À ce stade, aucun fournisseur n'est activé : les logos ne doivent pas être présentés comme des moyens de paiement déjà disponibles. Le checkout hébergé du fournisseur est privilégié au départ afin d'afficher les marques officielles et les options réellement activées par le compte marchand.
+
 ## Sécurité et intégrité
 
 - Appliquer la validation DTO, une limite stricte de taille des entrées et le rate limiting.
