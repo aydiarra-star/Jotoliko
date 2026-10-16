@@ -123,8 +123,8 @@ export class BillingService {
     // unique idempotency key prevents concurrent requests creating two invoices.
     let paymentId: string;
     if (existing?.status === "FAILED") {
-      const reservation = await this.prisma.billingPayment.update({
-        where: { id: existing.id },
+      const reservation = await this.prisma.billingPayment.updateMany({
+        where: { id: existing.id, status: "FAILED" },
         data: {
           status: "PENDING",
           amountXof,
@@ -134,9 +134,14 @@ export class BillingService {
           rawEventHash: null,
           paidAt: null,
         },
-        select: { id: true },
       });
-      paymentId = reservation.id;
+      if (reservation.count !== 1) {
+        throw new ConflictException({
+          code: "CHECKOUT_CREATION_IN_PROGRESS",
+          message: "Une autre requête prépare déjà la facture. Réessayez dans quelques secondes.",
+        });
+      }
+      paymentId = existing.id;
     } else if (!existing) {
       try {
         const reservation = await this.prisma.billingPayment.create({
