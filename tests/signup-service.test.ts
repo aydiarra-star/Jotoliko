@@ -9,6 +9,7 @@ function makeService() {
     signupAttempt: {
       findFirst: vi.fn().mockResolvedValue(null),
       update: vi.fn(),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       create: vi.fn().mockResolvedValue({
         id: "attempt-uuid",
         status: "PENDING_PAYMENT",
@@ -95,6 +96,52 @@ describe("SignupService", () => {
       response: { code: "SIGNUP_RESUME_INVALID" },
     });
     expect(prisma.signupAttempt.update).not.toHaveBeenCalled();
+  });
+
+
+  it("modifie une inscription en attente uniquement avec le jeton et un tarif serveur", async () => {
+    const { service, prisma } = makeService();
+    const token = "b".repeat(64);
+    prisma.signupAttempt.findFirst.mockResolvedValue({
+      id: "attempt-uuid",
+      status: "PENDING_PAYMENT",
+      expiresAt: new Date(Date.now() + 60_000),
+      companyName: "Atelier Diarra",
+      seatCount: 3,
+      planPriceId: "old-price",
+      planPrice: { id: "old-price", code: "PRO", version: 1, currency: "XOF", unitPriceXof: 4000 },
+    } as never);
+    prisma.planPrice.findFirst.mockResolvedValue({
+      id: "new-price",
+      code: "PRO",
+      version: 2,
+      currency: "XOF",
+      unitPriceXof: 5000,
+    });
+
+    const result = await service.updatePending("attempt-uuid", token, { seatCount: 4, resumeToken: token });
+
+    expect(prisma.signupAttempt.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: "attempt-uuid",
+        status: "PENDING_PAYMENT",
+        resumeTokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      }),
+      data: expect.objectContaining({ seatCount: 4, planPriceId: "new-price" }),
+    }));
+    expect(result.pricing.monthlyAmountXof).toBe(20000);
+    expect(result.nextStep).toBe("PAYMENT_PROVIDER_NOT_CONFIGURED");
+  });
+
+  it("ne modifie pas une inscription si le jeton est invalide", async () => {
+    const { service, prisma } = makeService();
+    prisma.signupAttempt.findFirst.mockResolvedValue(null);
+
+    await expect(service.updatePending("attempt-uuid", "c".repeat(64), {
+      seatCount: 4,
+      resumeToken: "c".repeat(64),
+    })).rejects.toMatchObject({ response: { code: "SIGNUP_RESUME_INVALID" } });
+    expect(prisma.signupAttempt.updateMany).not.toHaveBeenCalled();
   });
 
   it("renvoie l'état et le tarif lors d'une reprise autorisée", async () => {
