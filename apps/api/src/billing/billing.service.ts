@@ -252,7 +252,6 @@ export class BillingService {
         where: {
           id: payment.signupAttemptId!,
           status: "PENDING_PAYMENT",
-          expiresAt: { gt: now },
         },
         data: { status: "ACTIVE" },
       });
