@@ -119,21 +119,49 @@ export class BillingService {
       });
     }
 
-    // Never reuse a failed payment row. A timeout can happen after the provider
-    // created an invoice, and overwriting its token could make a later valid
-    // payment impossible to reconcile. A new signup attempt is required unless
-    // a provider-specific reconciliation workflow proves the old invoice terminal.
+    // A failed row can only be retried after a server-to-server check proves
+    // that its known provider invoice is terminal. A missing token or a provider
+    // timeout remains ambiguous: never create another invoice in that case.
+    let terminalFailedPaymentId: string | null = null;
     if (existing?.status === "FAILED") {
-      throw new ConflictException({
-        code: "CHECKOUT_NOT_RETRYABLE",
-        message: "Cette tentative de paiement a échoué ou son résultat est incertain. Pour éviter un double débit, ne réutilisez pas cette facture ; vérifiez son état auprès du support avant de recommencer.",
-      });
+      if (!existing.providerReference) {
+        throw new ConflictException({
+          code: "CHECKOUT_NOT_RETRYABLE",
+          message: "Le résultat de la facture précédente est incertain. Pour éviter un double débit, aucune nouvelle facture ne sera créée tant que son état ne peut pas être vérifié.",
+        });
+      }
+
+      let previousInvoice: { status: string };
+      try {
+        previousInvoice = await this.paydunya.confirmInvoice(existing.providerReference);
+      } catch {
+        throw new ConflictException({
+          code: "CHECKOUT_RECONCILIATION_UNAVAILABLE",
+          message: "L'état de la facture précédente n'a pas pu être vérifié auprès du prestataire. Réessayez plus tard ; aucune nouvelle facture n'a été créée.",
+        });
+      }
+
+      if (previousInvoice.status === "completed") {
+        await this.processPayDunyaCallback(existing.providerReference);
+        throw new ConflictException({
+          code: "CHECKOUT_ALREADY_PAID",
+          message: "La facture précédente est payée. Le résultat a été vérifié ; actualisez la page avant toute autre action.",
+        });
+      }
+      if (previousInvoice.status !== "failed" && previousInvoice.status !== "cancelled") {
+        throw new ConflictException({
+          code: "CHECKOUT_NOT_TERMINAL",
+          message: "La facture précédente n'est pas confirmée comme définitivement échouée ou annulée. Aucune nouvelle facture n'a été créée.",
+        });
+      }
+      terminalFailedPaymentId = existing.id;
     }
 
-    // Reserve one checkout slot before calling the provider. If two requests
-    // race, the unique signup-attempt idempotency key allows only one reservation.
+    // Reserve a checkout slot before calling the provider. For a retry, the
+    // old invoice row is retained and the deterministic retry key makes
+    // concurrent retry requests collide instead of creating duplicate invoices.
     let paymentId: string;
-    if (!existing) {
+    if (!existing || terminalFailedPaymentId) {
       try {
         const reservation = await this.prisma.billingPayment.create({
           data: {
@@ -142,7 +170,9 @@ export class BillingService {
             amountXof,
             currency: "XOF",
             status: "PENDING",
-            idempotencyKey: `paydunya-signup-${attempt.id}`,
+            idempotencyKey: terminalFailedPaymentId
+              ? `paydunya-signup-${attempt.id}-retry-${terminalFailedPaymentId}`
+              : `paydunya-signup-${attempt.id}`,
           },
           select: { id: true },
         });
