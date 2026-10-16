@@ -3,6 +3,7 @@ import { Throttle } from "@nestjs/throttler";
 import { AuthGuard } from "../auth/auth.guard";
 import type { AuthenticatedRequest } from "../auth/auth.types";
 import { BillingService } from "./billing.service";
+import { PayDunyaCallbackDto } from "./dto/paydunya-callback.dto";
 import { CreateSignupCheckoutDto } from "./dto/create-signup-checkout.dto";
 
 @Controller("billing")
@@ -49,6 +50,14 @@ export class BillingController {
       throw new BadRequestException("Jeton de facture PayDunya manquant ou invalide.");
     }
     return this.billing.processPayDunyaCallback(token);
+  }
+
+  /** Browser return fallback: still confirms the invoice server-to-server before activation. */
+  @Post("paydunya/return")
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  paydunyaReturn(@Body() body: PayDunyaCallbackDto) {
+    return this.billing.processPayDunyaCallback(body.token);
   }
 
   /** Authenticated company-scoped subscription summary; never accepts companyId from the client. */
