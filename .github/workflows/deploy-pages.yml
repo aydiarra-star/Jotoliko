@@ -31,6 +31,15 @@ jobs:
 
       - run: npm ci
 
+      # Le typecheck du dépôt couvre aussi apps/api. Installer ses dépendances
+      # et générer le client Prisma avant les contrôles évite les imports
+      # NestJS/Prisma manquants qui bloquaient la publication après fusion.
+      - name: Installation reproductible de l'API
+        run: npm ci --prefix apps/api
+
+      - name: Génération du client Prisma partagé
+        run: npm --prefix apps/api run prisma:generate
+
       - name: Vérifications avant publication
         run: |
           npm run typecheck
