@@ -10,6 +10,8 @@ on:
       - "prisma/schema.prisma"
       - "prisma/migrations/**"
       - "tests/signup-service.test.ts"
+      - "tests/billing-signup-activation.test.ts"
+      - "apps/api/src/billing/**"
       - ".github/workflows/signup-service-tests.yml"
   push:
     branches:
@@ -52,4 +54,4 @@ jobs:
       - name: Generate Prisma Client
         run: npm run prisma:generate --prefix apps/api
       - name: Run self-service signup tests
-        run: npm test -- tests/signup-service.test.ts
+        run: npm test -- tests/signup-service.test.ts tests/billing-signup-activation.test.ts
