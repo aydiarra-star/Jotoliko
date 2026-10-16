@@ -152,7 +152,7 @@ describe("Anti-dérive schéma Prisma ⇄ migrations", () => {
     // conscient et accompagné de migrations. Le socle de facturation et
     // d'inscription professionnelle porte désormais le schéma à 30 modèles.
     expect(models.length).toBe(30);
-    expect(enums.size).toBe(10);
+    expect(enums.size).toBe(13);
   });
 
   it("migre toutes les tables déclarées dans le schéma", () => {
